@@ -1,0 +1,15 @@
+build/bin
+node_modules
+frontend/dist
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+connection_history.json
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
