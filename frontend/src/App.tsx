@@ -102,8 +102,9 @@ function App() {
     "openvSwitch",
   ]);
 
-  async function connectOVSDB() {
+  async function connectOVSDB(selectedTablesParam: string[]) {
     try {
+      console.log("selectedTables:", selectedTablesParam);
       setConnectionStatus("Connecting...");
       const jumpHostsArray = jumpHosts
         .split(",")
@@ -120,11 +121,11 @@ function App() {
       );
       setConnected(true);
       setConnectionStatus("Connected successfully!");
-      setMonitoredTables(selectedTables);
-      setSelectedTable(selectedTables[0] || null);
+      setMonitoredTables(selectedTablesParam);
+      setSelectedTable(selectedTablesParam[0] || null);
       setShowConnectModal(false);
       loadHistory(); // Reload history after successful connection
-      loadData(); // Auto-load data after connection
+      // loadData will be triggered by useEffect when monitoredTables changes
     } catch (error) {
       setConnectionStatus(`Connection failed: ${error}`);
     }
@@ -150,6 +151,7 @@ function App() {
   async function loadData() {
     try {
       setDataStatus("Loading data...");
+      console.log("monitoredTables in loadData:", monitoredTables);
       const promises: Promise<any>[] = [];
       const dataSetters: string[] = [];
       monitoredTables.forEach((key) => {
@@ -170,6 +172,7 @@ function App() {
         }
       });
       const results = await Promise.all(promises);
+      console.log("loadData results:", results);
       dataSetters.forEach((key, index) => {
         const setter =
           key === "bridges"
@@ -185,6 +188,7 @@ function App() {
       });
       setDataStatus("Data loaded successfully");
     } catch (error) {
+      console.log("loadData error:", error);
       setDataStatus(`Failed to load data: ${error}`);
     }
   }
@@ -251,57 +255,31 @@ function App() {
             </thead>
             <tbody>
               {data.map((item: any, index) => {
-                const expandedKeys = Object.keys(expandedCells).filter((key) =>
-                  key.startsWith(`${tableName}-${index}-`),
-                );
-                const hasExpanded = expandedKeys.length > 0;
                 return (
-                  <>
-                    <tr key={index}>
-                      {columns.map((col) => {
-                        const value = item[col.field];
-                        const isComplex =
-                          Array.isArray(value) ||
-                          (typeof value === "object" && value !== null);
-                        const key = `${tableName}-${index}-${col.field}`;
-                        const isExpanded = expandedCells[key];
-                        const small = isComplex && isSmallComplex(value);
-                        return (
-                          <td key={col.field}>
-                            {isComplex ? (
-                              small ? (
-                                <span>{JSON.stringify(value)}</span>
-                              ) : (
+                  <tr key={index}>
+                    {columns.map((col) => {
+                      const value = item[col.field];
+                      const isComplex =
+                        Array.isArray(value) ||
+                        (typeof value === "object" && value !== null);
+                      const key = `${tableName}-${index}-${col.field}`;
+                      const isExpanded = expandedCells[key];
+                      const small = isComplex && isSmallComplex(value);
+                      return (
+                        <td key={col.field}>
+                          {isComplex ? (
+                            small ? (
+                              <span>{JSON.stringify(value)}</span>
+                            ) : isExpanded ? (
+                              <>
                                 <button
                                   onClick={() =>
                                     toggleCell(tableName, index, col.field)
                                   }
                                   className="btn-small"
                                 >
-                                  {Array.isArray(value)
-                                    ? `${value.length} items`
-                                    : "View"}
+                                  Collapse
                                 </button>
-                              )
-                            ) : (
-                              value || "-"
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    {hasExpanded && (
-                      <tr key={`${index}-expanded`}>
-                        <td
-                          colSpan={columns.length}
-                          style={{ padding: "1rem", background: "#2d2d30" }}
-                        >
-                          {expandedKeys.map((key) => {
-                            const colField = key.split("-").slice(2).join("-");
-                            const value = item[colField];
-                            return (
-                              <div key={key} style={{ marginBottom: "1rem" }}>
-                                <strong>{colField}:</strong>
                                 <pre
                                   style={{
                                     margin: "0.5rem 0",
@@ -311,13 +289,26 @@ function App() {
                                 >
                                   {JSON.stringify(value, null, 2)}
                                 </pre>
-                              </div>
-                            );
-                          })}
+                              </>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  toggleCell(tableName, index, col.field)
+                                }
+                                className="btn-small"
+                              >
+                                {Array.isArray(value)
+                                  ? `${value.length} items`
+                                  : "View"}
+                              </button>
+                            )
+                          ) : (
+                            value || "-"
+                          )}
                         </td>
-                      </tr>
-                    )}
-                  </>
+                      );
+                    })}
+                  </tr>
                 );
               })}
             </tbody>
@@ -331,6 +322,13 @@ function App() {
   useEffect(() => {
     loadHistory();
   }, []);
+
+  // Load data when monitoredTables changes
+  useEffect(() => {
+    if (monitoredTables.length > 0) {
+      loadData();
+    }
+  }, [monitoredTables]);
 
   async function loadHistory() {
     try {
@@ -506,7 +504,7 @@ function App() {
           <Form
             form={form}
             layout="vertical"
-            onFinish={connectOVSDB}
+            onFinish={(values) => connectOVSDB(values.selectedTables)}
             initialValues={{
               host,
               port,
@@ -544,7 +542,9 @@ function App() {
               </Select>
             </Form.Item>
             <Form.Item label="Select Tables to Monitor" name="selectedTables">
-              <Checkbox.Group>
+              <Checkbox.Group
+                onChange={(checkedValues) => setSelectedTables(checkedValues)}
+              >
                 {tableOptions.map((option) => (
                   <Checkbox key={option.key} value={option.key}>
                     {option.label}
