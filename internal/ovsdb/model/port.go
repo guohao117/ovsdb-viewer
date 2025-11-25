@@ -12,17 +12,17 @@ type (
 )
 
 var (
-	PortBondModeActiveBackup   PortBondMode = "active-backup"
-	PortBondModeBalanceSLB     PortBondMode = "balance-slb"
 	PortBondModeBalanceTCP     PortBondMode = "balance-tcp"
+	PortBondModeBalanceSLB     PortBondMode = "balance-slb"
+	PortBondModeActiveBackup   PortBondMode = "active-backup"
 	PortLACPActive             PortLACP     = "active"
-	PortLACPOff                PortLACP     = "off"
 	PortLACPPassive            PortLACP     = "passive"
+	PortLACPOff                PortLACP     = "off"
+	PortVLANModeTrunk          PortVLANMode = "trunk"
 	PortVLANModeAccess         PortVLANMode = "access"
-	PortVLANModeDot1qTunnel    PortVLANMode = "dot1q-tunnel"
 	PortVLANModeNativeTagged   PortVLANMode = "native-tagged"
 	PortVLANModeNativeUntagged PortVLANMode = "native-untagged"
-	PortVLANModeTrunk          PortVLANMode = "trunk"
+	PortVLANModeDot1qTunnel    PortVLANMode = "dot1q-tunnel"
 )
 
 // Port defines an object in Port table

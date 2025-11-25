@@ -14,8 +14,8 @@ type (
 var (
 	ControllerConnectionModeInBand    ControllerConnectionMode = "in-band"
 	ControllerConnectionModeOutOfBand ControllerConnectionMode = "out-of-band"
-	ControllerRoleMaster              ControllerRole           = "master"
 	ControllerRoleOther               ControllerRole           = "other"
+	ControllerRoleMaster              ControllerRole           = "master"
 	ControllerRoleSlave               ControllerRole           = "slave"
 	ControllerTypePrimary             ControllerType           = "primary"
 	ControllerTypeService             ControllerType           = "service"

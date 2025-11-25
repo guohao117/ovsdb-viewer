@@ -31,11 +31,6 @@ func (a *App) startup(ctx context.Context) {
 	a.LoadHistory()
 }
 
-// Greet returns a greeting for the given name
-func (a *App) Greet(name string) string {
-	return fmt.Sprintf("Hello %s, It's show time!", name)
-}
-
 // ConnectOVSDB connects to the OVSDB server using the provided configuration
 func (a *App) ConnectOVSDB(host, user, keyFile, endpoint string, port int, jumpHosts []string, localForwarderType string) error {
 	config := ovsdb.ConnectionConfig{

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
+import schema from "./schema.json";
+import { Layout, Menu, Button, Breadcrumb, Modal } from "antd";
+import {
+  DatabaseOutlined,
+  ApiOutlined,
+  GlobalOutlined,
+  SettingOutlined,
+} from "@ant-design/icons";
 import {
   ConnectOVSDB,
   DisconnectOVSDB,
@@ -9,8 +17,28 @@ import {
   GetPorts,
   GetInterfaces,
   GetOpenvSwitch,
-  GetSchema,
 } from "../wailsjs/go/main/App";
+const tableOptions = [
+  {
+    key: "bridges",
+    label: "Bridges",
+    method: "GetBridges",
+    tableName: "Bridge",
+  },
+  { key: "ports", label: "Ports", method: "GetPorts", tableName: "Port" },
+  {
+    key: "interfaces",
+    label: "Interfaces",
+    method: "GetInterfaces",
+    tableName: "Interface",
+  },
+  {
+    key: "openvSwitch",
+    label: "Open vSwitch",
+    method: "GetOpenvSwitch",
+    tableName: "Open_vSwitch",
+  },
+];
 
 interface ConnectionHistory {
   id: string;
@@ -37,16 +65,26 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState("");
   const [history, setHistory] = useState<ConnectionHistory[]>([]);
 
+  // UI states
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [monitoredTables, setMonitoredTables] = useState<string[]>([]);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+
   // OVSDB data states
   const [bridges, setBridges] = useState<any[]>([]);
   const [ports, setPorts] = useState<any[]>([]);
   const [interfaces, setInterfaces] = useState<any[]>([]);
   const [openvSwitch, setOpenvSwitch] = useState<any[]>([]);
   const [dataStatus, setDataStatus] = useState("");
-  const [schema, setSchema] = useState<any>(null);
   const [expandedCells, setExpandedCells] = useState<{
     [key: string]: boolean;
   }>({});
+  const [selectedTables, setSelectedTables] = useState<string[]>([
+    "bridges",
+    "ports",
+    "interfaces",
+    "openvSwitch",
+  ]);
 
   async function connectOVSDB() {
     try {
@@ -66,7 +104,11 @@ function App() {
       );
       setConnected(true);
       setConnectionStatus("Connected successfully!");
+      setMonitoredTables(selectedTables);
+      setSelectedTable(selectedTables[0] || null);
+      setShowConnectModal(false);
       loadHistory(); // Reload history after successful connection
+      loadData(); // Auto-load data after connection
     } catch (error) {
       setConnectionStatus(`Connection failed: ${error}`);
     }
@@ -82,6 +124,8 @@ function App() {
       setPorts([]);
       setInterfaces([]);
       setOpenvSwitch([]);
+      setMonitoredTables([]);
+      setSelectedTable(null);
     } catch (error) {
       setConnectionStatus(`Disconnect failed: ${error}`);
     }
@@ -90,24 +134,39 @@ function App() {
   async function loadData() {
     try {
       setDataStatus("Loading data...");
-      const [bridgesData, portsData, interfacesData, ovsData, schemaData] =
-        await Promise.all([
-          GetBridges(),
-          GetPorts(),
-          GetInterfaces(),
-          GetOpenvSwitch(),
-          GetSchema(),
-        ]);
-      console.log("Bridges data:", bridgesData);
-      console.log("Ports data:", portsData);
-      console.log("Interfaces data:", interfacesData);
-      console.log("OVS data:", ovsData);
-      console.log("Schema:", schemaData);
-      setBridges(bridgesData);
-      setPorts(portsData);
-      setInterfaces(interfacesData);
-      setOpenvSwitch(ovsData);
-      setSchema(JSON.parse(schemaData));
+      const promises: Promise<any>[] = [];
+      const dataSetters: string[] = [];
+      monitoredTables.forEach((key) => {
+        const option = tableOptions.find((o) => o.key === key);
+        if (option) {
+          promises.push(
+            key === "bridges"
+              ? GetBridges()
+              : key === "ports"
+                ? GetPorts()
+                : key === "interfaces"
+                  ? GetInterfaces()
+                  : key === "openvSwitch"
+                    ? GetOpenvSwitch()
+                    : Promise.resolve([]),
+          );
+          dataSetters.push(key);
+        }
+      });
+      const results = await Promise.all(promises);
+      dataSetters.forEach((key, index) => {
+        const setter =
+          key === "bridges"
+            ? setBridges
+            : key === "ports"
+              ? setPorts
+              : key === "interfaces"
+                ? setInterfaces
+                : key === "openvSwitch"
+                  ? setOpenvSwitch
+                  : () => {};
+        setter(results[index]);
+      });
       setDataStatus("Data loaded successfully");
     } catch (error) {
       setDataStatus(`Failed to load data: ${error}`);
@@ -137,7 +196,7 @@ function App() {
   }
 
   function renderTable(title: string, data: any[], tableName: string) {
-    if (!schema || !schema.tables || !schema.tables[tableName]) {
+    if (!schema || !schema.tables || !(schema.tables as any)[tableName]) {
       return (
         <div className="table-section">
           <h3>{title}</h3>
@@ -146,7 +205,7 @@ function App() {
       );
     }
 
-    const tableSchema = schema.tables[tableName];
+    const tableSchema = (schema.tables as any)[tableName];
     const columns = Object.keys(tableSchema.columns).map((field) => ({
       field: toCamelCase(field), // Convert to Go struct field name
       label: field.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()), // Human readable label
@@ -280,143 +339,366 @@ function App() {
     }
   }
 
+  const dataMap: { [key: string]: any[] } = {
+    bridges,
+    ports,
+    interfaces,
+    openvSwitch,
+  };
+
   return (
-    <div id="App">
-      <div className="ovsdb-section">
-        <h2>OVSDB Connection</h2>
-        <div className="form-group">
-          <label>Host:</label>
+    <Layout style={{ height: "100vh", background: "#1e1e1e" }}>
+      <Layout.Sider
+        width={250}
+        style={{
+          position: "relative",
+          background: "#252526",
+          borderRight: "1px solid #444",
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+        }}
+      >
+        <div className="logo" style={{ color: "#d4d4d4" }}>
+          OVSDB Viewer
+        </div>
+        <Menu
+          mode="inline"
+          selectedKeys={selectedTable ? [selectedTable] : []}
+          onClick={({ key }: { key: string }) => setSelectedTable(key)}
+          style={{
+            background: "transparent",
+            border: "none",
+            flex: 1,
+          }}
+          items={monitoredTables.map((key) => {
+            const option = tableOptions.find((o) => o.key === key);
+            let icon;
+            switch (key) {
+              case "bridges":
+                icon = <DatabaseOutlined />;
+                break;
+              case "ports":
+                icon = <ApiOutlined />;
+                break;
+              case "interfaces":
+                icon = <GlobalOutlined />;
+                break;
+              case "openvSwitch":
+                icon = <SettingOutlined />;
+                break;
+              default:
+                icon = <DatabaseOutlined />;
+            }
+            return {
+              key,
+              icon,
+              label: option?.label,
+              style: {
+                color: "#d4d4d4",
+              },
+            };
+          })}
+        />
+      </Layout.Sider>
+      <Layout
+        style={{
+          background: "#1e1e1e",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Layout.Header
+          style={{
+            background: "#252526",
+            padding: "0 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottom: "1px solid #444",
+            color: "#d4d4d4",
+          }}
+        >
+          <Breadcrumb style={{ color: "#d4d4d4" }}>
+            <Breadcrumb.Item>OVSDB</Breadcrumb.Item>
+            <Breadcrumb.Item>
+              {selectedTable
+                ? tableOptions.find((o) => o.key === selectedTable)?.label
+                : "Home"}
+            </Breadcrumb.Item>
+          </Breadcrumb>
+          {selectedTable && (
+            <span style={{ color: "#d4d4d4" }}>
+              ({dataMap[selectedTable]?.length || 0} rows)
+            </span>
+          )}
+        </Layout.Header>
+        <Layout.Content
+          style={{
+            flex: 1,
+            background: "#1e1e1e",
+            padding: "24px",
+            color: "#d4d4d4",
+          }}
+        >
+          {selectedTable ? (
+            (() => {
+              const option = tableOptions.find((o) => o.key === selectedTable);
+              return option ? (
+                renderTable(
+                  option.label,
+                  dataMap[selectedTable],
+                  option.tableName,
+                )
+              ) : (
+                <p style={{ color: "#d4d4d4" }}>Table not found</p>
+              );
+            })()
+          ) : (
+            <div className="welcome" style={{ color: "#d4d4d4" }}>
+              <h2>Welcome to OVSDB Viewer</h2>
+              <p>Select a table from the sidebar to view data.</p>
+              <div className="status">Status: {dataStatus}</div>
+            </div>
+          )}
+        </Layout.Content>
+        <Layout.Footer
+          style={{
+            background: "#007acc",
+            borderTop: "1px solid #444",
+            padding: "8px 16px",
+            height: "auto",
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          <Button
+            type="text"
+            onClick={() => setShowConnectModal(true)}
+            style={{
+              color: "#d4d4d4",
+              background: "transparent",
+              border: "none",
+              padding: 0,
+            }}
+          >
+            {connected ? "Reconnect" : "Connect"}
+          </Button>
+        </Layout.Footer>
+      </Layout>
+      <Modal
+        title="Connect to OVSDB"
+        open={showConnectModal}
+        onCancel={() => setShowConnectModal(false)}
+        footer={null}
+        width={600}
+        style={{ color: "#d4d4d4" }}
+      >
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>Host:</label>
           <input
             type="text"
             value={host}
             onChange={(e) => setHost(e.target.value)}
             placeholder="e.g., 192.168.1.100"
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           />
         </div>
-        <div className="form-group">
-          <label>Port:</label>
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>Port:</label>
           <input
             type="number"
             value={port}
             onChange={(e) => setPort(parseInt(e.target.value) || 22)}
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           />
         </div>
-        <div className="form-group">
-          <label>User:</label>
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>User:</label>
           <input
             type="text"
             value={user}
             onChange={(e) => setUser(e.target.value)}
             placeholder="e.g., root"
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           />
         </div>
-        <div className="form-group">
-          <label>Key File:</label>
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>Key File:</label>
           <input
             type="text"
             value={keyFile}
             onChange={(e) => setKeyFile(e.target.value)}
             placeholder="e.g., /home/user/.ssh/id_rsa"
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           />
         </div>
-        <div className="form-group">
-          <label>Endpoint:</label>
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>Endpoint:</label>
           <input
             type="text"
             value={endpoint}
             onChange={(e) => setEndpoint(e.target.value)}
             placeholder="e.g., tcp:127.0.0.1:6640 or unix:/var/run/ovsdb.sock"
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           />
         </div>
-        <div className="form-group">
-          <label>Jump Hosts (comma-separated):</label>
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>
+            Jump Hosts (comma-separated):
+          </label>
           <input
             type="text"
             value={jumpHosts}
             onChange={(e) => setJumpHosts(e.target.value)}
             placeholder="e.g., user@jump1:22, user@jump2:22"
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           />
         </div>
-        <div className="form-group">
-          <label>Local Forwarder Type:</label>
+        <div className="form-group" style={{ color: "#d4d4d4" }}>
+          <label style={{ color: "#d4d4d4" }}>Local Forwarder Type:</label>
           <select
             value={localForwarderType}
             onChange={(e) => setLocalForwarderType(e.target.value)}
+            style={{
+              background: "#3c3c3c",
+              color: "#d4d4d4",
+              border: "1px solid #555",
+            }}
           >
             <option value="tcp">TCP</option>
             <option value="unix">Unix</option>
             <option value="auto">Auto</option>
           </select>
         </div>
+        <div className="table-selection" style={{ color: "#d4d4d4" }}>
+          <h3 style={{ color: "#d4d4d4" }}>Select Tables to Monitor:</h3>
+          {tableOptions.map((option) => (
+            <label
+              key={option.key}
+              className="checkbox-label"
+              style={{ color: "#d4d4d4" }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedTables.includes(option.key)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedTables([...selectedTables, option.key]);
+                  } else {
+                    setSelectedTables(
+                      selectedTables.filter((t) => t !== option.key),
+                    );
+                  }
+                }}
+                style={{ background: "#3c3c3c", border: "1px solid #555" }}
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
         <div className="button-group">
-          <button className="btn" onClick={connectOVSDB} disabled={connected}>
+          <Button type="primary" onClick={connectOVSDB}>
             Connect
-          </button>
-          <button
-            className="btn"
-            onClick={disconnectOVSDB}
-            disabled={!connected}
-          >
-            Disconnect
-          </button>
+          </Button>
+          <Button onClick={() => setShowConnectModal(false)}>Cancel</Button>
         </div>
-        <div className="status">Status: {connectionStatus}</div>
-      </div>
-
-      {connected && (
-        <div className="data-section">
-          <h2>OVSDB Data</h2>
-          <button className="btn" onClick={loadData}>
-            Load Data
-          </button>
-          <div className="status">Status: {dataStatus}</div>
-
-          {renderTable("Bridges", bridges, "Bridge")}
-
-          {renderTable("Ports", ports, "Port")}
-
-          {renderTable("Interfaces", interfaces, "Interface")}
-
-          {renderTable("Open vSwitch", openvSwitch, "Open_vSwitch")}
+        <div className="status" style={{ color: "#d4d4d4" }}>
+          Status: {connectionStatus}
         </div>
-      )}
-
-      <div className="history-section">
-        <h2>Connection History</h2>
-        {history.length === 0 ? (
-          <p>No connection history yet.</p>
-        ) : (
-          <ul className="history-list">
-            {history.map((conn, index) => (
-              <li key={conn.id} className="history-item">
-                <div className="history-info">
-                  <strong>
-                    {conn.host}:{conn.port}
-                  </strong>{" "}
-                  - {conn.user} - {conn.endpoint}
-                  <br />
-                  <small>{new Date(conn.timestamp).toLocaleString()}</small>
-                </div>
-                <div className="history-actions">
-                  <button
-                    className="btn-small"
-                    onClick={() => loadConnection(conn)}
-                  >
-                    Load
-                  </button>
-                  <button
-                    className="btn-small delete"
-                    onClick={() => deleteConnection(index)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+        <div
+          className="history-section"
+          style={{
+            color: "#d4d4d4",
+            background: "#1e1e1e",
+            padding: "16px",
+            borderRadius: "4px",
+          }}
+        >
+          <h3 style={{ color: "#d4d4d4" }}>Connection History</h3>
+          {history.length === 0 ? (
+            <p style={{ color: "#888" }}>No connection history yet.</p>
+          ) : (
+            <ul
+              className="history-list"
+              style={{
+                color: "#d4d4d4",
+                listStyle: "none",
+                padding: 0,
+                background: "#252526",
+                border: "1px solid #444",
+                borderRadius: "4px",
+              }}
+            >
+              {history.map((conn, index) => (
+                <li
+                  key={conn.id}
+                  className="history-item"
+                  style={{
+                    color: "#d4d4d4",
+                    padding: "8px 12px",
+                    borderBottom:
+                      index < history.length - 1 ? "1px solid #444" : "none",
+                    background: index % 2 === 0 ? "#2d2d30" : "#252526",
+                  }}
+                >
+                  <div className="history-info">
+                    <strong>
+                      {conn.host}:{conn.port}
+                    </strong>{" "}
+                    - {conn.user} - {conn.endpoint}
+                    <br />
+                    <small style={{ color: "#888" }}>
+                      {new Date(conn.timestamp).toLocaleString()}
+                    </small>
+                  </div>
+                  <div className="history-actions" style={{ marginTop: "8px" }}>
+                    <Button
+                      size="small"
+                      onClick={() => loadConnection(conn)}
+                      style={{ marginRight: "8px" }}
+                    >
+                      Load
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      onClick={() => deleteConnection(index)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+    </Layout>
   );
 }
 

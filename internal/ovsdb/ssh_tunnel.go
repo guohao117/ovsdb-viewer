@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -57,10 +58,14 @@ func EstablishTunnel(config ConnectionConfig, remoteEndpoint string) (*Tunnel, e
 	} else if forwarderType == "unix" {
 		return establishUnixTunnel(client, remoteAddr, remoteEndpoint)
 	} else if forwarderType == "auto" {
-		if strings.HasPrefix(remoteEndpoint, "tcp:") {
+		if runtime.GOOS == "windows" {
 			return establishTCPTunnel(client, remoteAddr, remoteEndpoint)
 		} else {
-			return establishUnixTunnel(client, remoteAddr, remoteEndpoint)
+			if strings.HasPrefix(remoteEndpoint, "tcp:") {
+				return establishTCPTunnel(client, remoteAddr, remoteEndpoint)
+			} else {
+				return establishUnixTunnel(client, remoteAddr, remoteEndpoint)
+			}
 		}
 	}
 	return nil, fmt.Errorf("unsupported forwarder type: %s", forwarderType)

@@ -10,8 +10,8 @@ type (
 )
 
 var (
-	FlowTableOverflowPolicyEvict  FlowTableOverflowPolicy = "evict"
 	FlowTableOverflowPolicyRefuse FlowTableOverflowPolicy = "refuse"
+	FlowTableOverflowPolicyEvict  FlowTableOverflowPolicy = "evict"
 )
 
 // FlowTable defines an object in Flow_Table table

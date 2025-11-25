@@ -73,7 +73,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "AutoAttach"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "controller": {
@@ -91,7 +92,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -120,12 +122,13 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "secure",
-                  "standalone"
+                  "standalone",
+                  "secure"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "flood_vlans": {
@@ -160,7 +163,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "IPFIX"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "mcast_snooping_enable": {
@@ -186,7 +190,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "NetFlow"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "other_config": {
@@ -253,7 +258,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "sFlow"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "status": {
@@ -300,22 +306,22 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "icmp_first",
-                  "icmp_reply",
-                  "tcp_close",
-                  "tcp_close_wait",
+                  "tcp_syn_sent",
+                  "tcp_syn_recv",
                   "tcp_established",
                   "tcp_fin_wait",
+                  "tcp_close_wait",
                   "tcp_last_ack",
-                  "tcp_retransmit",
-                  "tcp_syn_recv",
-                  "tcp_syn_sent",
-                  "tcp_syn_sent2",
                   "tcp_time_wait",
+                  "tcp_close",
+                  "tcp_syn_sent2",
+                  "tcp_retransmit",
                   "tcp_unack",
                   "udp_first",
+                  "udp_single",
                   "udp_multiple",
-                  "udp_single"
+                  "icmp_first",
+                  "icmp_reply"
                 ]
               ]
             },
@@ -351,7 +357,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "timeout_policy": {
@@ -360,7 +367,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "CT_Timeout_Policy"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         }
       }
@@ -379,7 +387,8 @@ var schema = `{
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "controller_burst_limit": {
@@ -388,7 +397,8 @@ var schema = `{
               "type": "integer",
               "minInteger": 25
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "controller_queue_size": {
@@ -398,7 +408,8 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 512
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "controller_rate_limit": {
@@ -407,7 +418,8 @@ var schema = `{
               "type": "integer",
               "minInteger": 100
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "enable_async_messages": {
@@ -415,7 +427,8 @@ var schema = `{
             "key": {
               "type": "boolean"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -435,7 +448,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "is_connected": {
@@ -447,7 +461,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "local_ip": {
@@ -455,7 +470,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "local_netmask": {
@@ -463,7 +479,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "max_backoff": {
@@ -472,7 +489,8 @@ var schema = `{
               "type": "integer",
               "minInteger": 1000
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "other_config": {
@@ -494,13 +512,14 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "master",
                   "other",
+                  "master",
                   "slave"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -532,7 +551,8 @@ var schema = `{
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         }
       }
@@ -558,7 +578,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "ct_zones": {
@@ -600,7 +621,9 @@ var schema = `{
             "key": {
               "type": "uuid",
               "refTable": "Bridge"
-            }
+            },
+            "min": 1,
+            "max": 1
           }
         },
         "external_ids": {
@@ -621,7 +644,9 @@ var schema = `{
               "type": "integer",
               "minInteger": 0,
               "maxInteger": 4294967295
-            }
+            },
+            "min": 1,
+            "max": 1
           }
         },
         "ipfix": {
@@ -630,7 +655,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "IPFIX"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -662,7 +688,8 @@ var schema = `{
               "type": "integer",
               "minInteger": 0
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "groups": {
@@ -679,7 +706,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "overflow_policy": {
@@ -689,12 +717,13 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "evict",
-                  "refuse"
+                  "refuse",
+                  "evict"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "prefixes": {
@@ -717,7 +746,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4200
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "cache_max_flows": {
@@ -727,7 +757,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -749,7 +780,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "obs_point_id": {
@@ -759,7 +791,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "other_config": {
@@ -781,7 +814,8 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "stats_interval": {
@@ -791,7 +825,8 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 3600
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "targets": {
@@ -810,7 +845,8 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 3600
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         }
       }
@@ -824,12 +860,13 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "down",
-                  "up"
+                  "up",
+                  "down"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -863,7 +900,8 @@ var schema = `{
             "key": {
               "type": "boolean"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -882,7 +920,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "cfm_health": {
@@ -892,7 +931,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 100
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -901,7 +941,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "cfm_remote_mpids": {
@@ -921,12 +962,13 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "down",
-                  "up"
+                  "up",
+                  "down"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -937,12 +979,13 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "full",
-                  "half"
+                  "half",
+                  "full"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -951,7 +994,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -973,7 +1017,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4294967295
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1014,7 +1059,8 @@ var schema = `{
             "key": {
               "type": "boolean"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1023,7 +1069,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1032,7 +1079,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1043,12 +1091,13 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "down",
-                  "up"
+                  "up",
+                  "down"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1069,7 +1118,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "mac_in_use": {
@@ -1077,7 +1127,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1086,7 +1137,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           },
           "ephemeral": true
         },
@@ -1096,7 +1148,8 @@ var schema = `{
               "type": "integer",
               "minInteger": 1
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "name": {
@@ -1108,7 +1161,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "ofport_request": {
@@ -1118,7 +1172,8 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 65279
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "options": {
@@ -1195,7 +1250,8 @@ var schema = `{
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -1215,7 +1271,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "is_connected": {
@@ -1228,7 +1285,8 @@ var schema = `{
               "type": "integer",
               "minInteger": 1000
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "other_config": {
@@ -1290,7 +1348,8 @@ var schema = `{
               "refTable": "Port",
               "refType": "weak"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "output_vlan": {
@@ -1300,7 +1359,8 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 4095
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "select_all": {
@@ -1346,7 +1406,8 @@ var schema = `{
               "minInteger": 14,
               "maxInteger": 65535
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "statistics": {
@@ -1384,7 +1445,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 255
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "engine_type": {
@@ -1394,7 +1456,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 255
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -1414,6 +1477,7 @@ var schema = `{
             "key": {
               "type": "string"
             },
+            "min": 1,
             "max": "unlimited"
           }
         }
@@ -1461,7 +1525,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "dpdk_initialized": {
@@ -1472,7 +1537,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -1526,7 +1592,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "ssl": {
@@ -1535,7 +1602,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "SSL"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "statistics": {
@@ -1556,7 +1624,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "system_version": {
@@ -1564,7 +1633,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -1577,7 +1647,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "bond_downdelay": {
@@ -1593,13 +1664,14 @@ var schema = `{
               "enum": [
                 "set",
                 [
-                  "active-backup",
+                  "balance-tcp",
                   "balance-slb",
-                  "balance-tcp"
+                  "active-backup"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "bond_updelay": {
@@ -1637,6 +1709,7 @@ var schema = `{
               "type": "uuid",
               "refTable": "Interface"
             },
+            "min": 1,
             "max": "unlimited"
           }
         },
@@ -1648,12 +1721,13 @@ var schema = `{
                 "set",
                 [
                   "active",
-                  "off",
-                  "passive"
+                  "passive",
+                  "off"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "mac": {
@@ -1661,7 +1735,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "name": {
@@ -1689,7 +1764,8 @@ var schema = `{
               "type": "uuid",
               "refTable": "QoS"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "rstp_statistics": {
@@ -1751,7 +1827,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 4095
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "trunks": {
@@ -1772,15 +1849,16 @@ var schema = `{
               "enum": [
                 "set",
                 [
+                  "trunk",
                   "access",
-                  "dot1q-tunnel",
                   "native-tagged",
                   "native-untagged",
-                  "trunk"
+                  "dot1q-tunnel"
                 ]
               ]
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -1846,7 +1924,8 @@ var schema = `{
               "minInteger": 0,
               "maxInteger": 63
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -1911,7 +1990,8 @@ var schema = `{
             "key": {
               "type": "string"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "external_ids": {
@@ -1931,7 +2011,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "polling": {
@@ -1939,7 +2020,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "sampling": {
@@ -1947,7 +2029,8 @@ var schema = `{
             "key": {
               "type": "integer"
             },
-            "min": 0
+            "min": 0,
+            "max": 1
           }
         },
         "targets": {
@@ -1955,6 +2038,7 @@ var schema = `{
             "key": {
               "type": "string"
             },
+            "min": 1,
             "max": "unlimited"
           }
         }

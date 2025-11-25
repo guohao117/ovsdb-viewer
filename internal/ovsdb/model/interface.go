@@ -13,14 +13,14 @@ type (
 )
 
 var (
-	InterfaceAdminStateDown       InterfaceAdminState       = "down"
 	InterfaceAdminStateUp         InterfaceAdminState       = "up"
-	InterfaceCFMRemoteOpstateDown InterfaceCFMRemoteOpstate = "down"
+	InterfaceAdminStateDown       InterfaceAdminState       = "down"
 	InterfaceCFMRemoteOpstateUp   InterfaceCFMRemoteOpstate = "up"
-	InterfaceDuplexFull           InterfaceDuplex           = "full"
+	InterfaceCFMRemoteOpstateDown InterfaceCFMRemoteOpstate = "down"
 	InterfaceDuplexHalf           InterfaceDuplex           = "half"
-	InterfaceLinkStateDown        InterfaceLinkState        = "down"
+	InterfaceDuplexFull           InterfaceDuplex           = "full"
 	InterfaceLinkStateUp          InterfaceLinkState        = "up"
+	InterfaceLinkStateDown        InterfaceLinkState        = "down"
 )
 
 // Interface defines an object in Interface table

@@ -26,8 +26,6 @@ export function GetPorts():Promise<Array<model.Port>>;
 
 export function GetSchema():Promise<string>;
 
-export function Greet(arg1:string):Promise<string>;
-
 export function LoadHistory():Promise<void>;
 
 export function SaveHistory():Promise<void>;

@@ -11,8 +11,8 @@ type (
 )
 
 var (
-	BridgeFailModeSecure      BridgeFailMode  = "secure"
 	BridgeFailModeStandalone  BridgeFailMode  = "standalone"
+	BridgeFailModeSecure      BridgeFailMode  = "secure"
 	BridgeProtocolsOpenflow10 BridgeProtocols = "OpenFlow10"
 	BridgeProtocolsOpenflow11 BridgeProtocols = "OpenFlow11"
 	BridgeProtocolsOpenflow12 BridgeProtocols = "OpenFlow12"

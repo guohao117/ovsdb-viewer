@@ -46,10 +46,6 @@ export function GetSchema() {
   return window['go']['main']['App']['GetSchema']();
 }
 
-export function Greet(arg1) {
-  return window['go']['main']['App']['Greet'](arg1);
-}
-
 export function LoadHistory() {
   return window['go']['main']['App']['LoadHistory']();
 }
