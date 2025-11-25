@@ -42,7 +42,7 @@ func (c *OVSDBClient) Connect(config ConnectionConfig, endpoint string) error {
 		}
 		return fmt.Errorf("failed to create DB model: %w", err)
 	}
-	log.Printf("Connecting to database: %s", dbModel.Name)
+	log.Printf("Connecting to database: %s", dbModel.Name())
 	ovsdbClient, err := client.NewOVSDBClient(dbModel, client.WithEndpoint(localEndpoint))
 	if err != nil {
 		if tunnel != nil {
