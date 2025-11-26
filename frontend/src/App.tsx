@@ -218,10 +218,7 @@ function App() {
   function renderTable(title: string, data: any[], tableName: string) {
     if (!schema || !schema.tables || !(schema.tables as any)[tableName]) {
       return (
-        <div
-          className="table-section"
-          style={{ height: "100%", overflow: "auto", padding: "24px" }}
-        >
+        <div className="table-section">
           <h3>{title}</h3>
           <p>Schema not loaded or table not found</p>
         </div>
@@ -235,10 +232,7 @@ function App() {
     }));
 
     return (
-      <div
-        className="table-section"
-        style={{ height: "100%", overflow: "auto", padding: "24px" }}
-      >
+      <div className="table-section">
         <h3>
           {title} ({data.length})
         </h3>
@@ -280,13 +274,7 @@ function App() {
                                 >
                                   Collapse
                                 </button>
-                                <pre
-                                  style={{
-                                    margin: "0.5rem 0",
-                                    whiteSpace: "pre-wrap",
-                                    fontSize: "0.8rem",
-                                  }}
-                                >
+                                <pre className="complex-value">
                                   {JSON.stringify(value, null, 2)}
                                 </pre>
                               </>
@@ -392,7 +380,7 @@ function App() {
 
   return (
     <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, cssVar: true }}>
-      <Layout style={{ height: "100vh" }}>
+      <Layout className="root-layout">
         <Layout.Sider width={250}>
           <div className="logo">OVSDB Viewer</div>
           <Menu
@@ -426,13 +414,7 @@ function App() {
             })}
           />
         </Layout.Sider>
-        <Layout
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            flex: 1,
-          }}
-        >
+        <Layout className="main-layout">
           <Layout.Header>
             <Breadcrumb>
               <Breadcrumb.Item>OVSDB</Breadcrumb.Item>
@@ -446,7 +428,7 @@ function App() {
               <span>({dataMap[selectedTable]?.length || 0} rows)</span>
             )}
           </Layout.Header>
-          <Layout.Content style={{ flex: 1, overflow: "hidden" }}>
+          <Layout.Content className="content">
             {selectedTable ? (
               (() => {
                 const option = tableOptions.find(
@@ -463,7 +445,7 @@ function App() {
                 );
               })()
             ) : (
-              <div className="welcome" style={{ padding: "24px" }}>
+              <div className="welcome">
                 <h2>Welcome to OVSDB Viewer</h2>
                 <p>Select a table from the sidebar to view data.</p>
                 <div className="status">Status: {dataStatus}</div>
@@ -471,18 +453,7 @@ function App() {
             )}
           </Layout.Content>
         </Layout>
-        <Layout.Footer
-          style={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 1000,
-            display: "flex",
-            justifyContent: "flex-start",
-            alignItems: "center",
-          }}
-        >
+        <Layout.Footer className="footer">
           <Button
             type="text"
             size="small"
