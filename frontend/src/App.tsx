@@ -3,7 +3,6 @@ import "./App.css";
 import schema from "./schema.json";
 import {
   Layout,
-  Menu,
   Button,
   Breadcrumb,
   Modal,
@@ -16,15 +15,15 @@ import {
   Space,
   Tabs,
   Table,
-  Popover,
   Drawer,
+  Tree,
 } from "antd";
 import {
-  DatabaseOutlined,
-  ApiOutlined,
-  GlobalOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
+  VscJson,
+  VscTable,
+  VscDebugStart,
+  VscDebugStop,
+} from "react-icons/vsc";
 import {
   ConnectOVSDB,
   DisconnectOVSDB,
@@ -324,12 +323,12 @@ function App() {
 
   // Compute table body scroll y (so Table uses an internal scroll area and header becomes fixed inside the table)
   useEffect(() => {
-    const el = tableSectionRef.current;
-    if (!el) {
-      setTableBodyHeight(undefined);
-      return;
-    }
     function computeHeight() {
+      const el = tableSectionRef.current;
+      if (!el) {
+        setTableBodyHeight(undefined);
+        return;
+      }
       const sectionHeight = el.clientHeight || 0;
       const titleEl = el.querySelector("h3") as HTMLElement | null;
       const titleHeight = titleEl ? titleEl.offsetHeight : 36;
@@ -343,15 +342,19 @@ function App() {
     computeHeight();
 
     let ro: any;
-    if (typeof window !== "undefined" && (window as any).ResizeObserver) {
+    const el = tableSectionRef.current;
+    if (el && typeof window !== "undefined" && (window as any).ResizeObserver) {
       ro = new (window as any).ResizeObserver(() => computeHeight());
       ro.observe(el);
     } else {
       window.addEventListener("resize", computeHeight);
     }
     return () => {
-      if (ro && typeof ro.disconnect === "function") ro.disconnect();
-      else window.removeEventListener("resize", computeHeight);
+      if (ro && ro.disconnect) {
+        ro.disconnect();
+      } else {
+        window.removeEventListener("resize", computeHeight);
+      }
     };
   }, [monitoredTables, selectedTable, tabsOffset]);
 
@@ -415,20 +418,8 @@ function App() {
     }
   }
 
-  function getIconByKey(key: string) {
-    switch (key) {
-      case "bridges":
-        return <DatabaseOutlined />;
-      case "ports":
-        return <ApiOutlined />;
-      case "interfaces":
-        return <GlobalOutlined />;
-      case "openvSwitch":
-        return <SettingOutlined />;
-      default:
-        return <DatabaseOutlined />;
-    }
-  }
+  // Removed duplicate getIconByKey (legacy mapping). The unified `getIconByKey` function
+  // that returns a table icon is defined later in the file.
 
   function removeTab(targetKey: string) {
     // Compute new set of tabs
@@ -452,6 +443,11 @@ function App() {
     }
   }
 
+  function getIconByKey(key: string) {
+    // Use a consistent VS Code codicon (react-icons/vsc) for every table item
+    return <VscTable className="react-icon" />;
+  }
+
   const dataMap: { [key: string]: any[] } = {
     bridges,
     ports,
@@ -462,12 +458,26 @@ function App() {
   return (
     <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, cssVar: true }}>
       <Layout className="root-layout">
-        <Layout.Sider width={250}>
+        <Layout.Sider className="left-sider" width={250} theme="dark">
           <div className="logo">OVSDB Viewer</div>
-          <Menu
-            mode="inline"
+          <div className="sider-header">
+            <VscJson className="react-icon" />
+            <span className="sider-title">DBs</span>
+          </div>
+          <Tree
+            showIcon
+            defaultExpandAll
             selectedKeys={selectedTable ? [selectedTable] : []}
-            onClick={({ key }: { key: string }) => {
+            onSelect={(selectedKeys: any, info: any) => {
+              const key =
+                selectedKeys && selectedKeys.length
+                  ? String(selectedKeys[0])
+                  : "";
+              // If clicking root (db-root) or nothing, do not select a table
+              if (!key || key === "db-root") {
+                setSelectedTable(null);
+                return;
+              }
               // If the clicked table isn't opened, add it to monitoredTables (open a new tab)
               setMonitoredTables((prev) => {
                 if (!prev.includes(key)) {
@@ -482,21 +492,25 @@ function App() {
                 loadDataForTable(key);
               }
             }}
-            items={tableOptions.map((option) => {
-              const key = option.key;
-              return {
-                key,
-                icon: getIconByKey(key),
-                label: option.label,
-              };
-            })}
+            treeData={[
+              {
+                title: schema?.name || "Open_vSwitch",
+                key: "db-root",
+                icon: <VscJson className="react-icon tree-icon" />,
+                children: tableOptions.map((option) => ({
+                  title: option.label,
+                  key: option.key,
+                  icon: <VscTable className="react-icon tree-icon" />,
+                })),
+              },
+            ]}
           />
         </Layout.Sider>
         <Layout className="main-layout">
           <Layout.Header className="header">
             <div className="header-top">
               <Breadcrumb>
-                <Breadcrumb.Item>OVSDB</Breadcrumb.Item>
+                <Breadcrumb.Item>{schema?.name || "OVSDB"}</Breadcrumb.Item>
                 <Breadcrumb.Item>
                   {selectedTable
                     ? tableOptions.find((o) => o.key === selectedTable)?.label
@@ -570,7 +584,13 @@ function App() {
           <Button
             type="text"
             size="small"
-            icon={<ApiOutlined />}
+            icon={
+              connected ? (
+                <VscDebugStop className="react-icon" />
+              ) : (
+                <VscDebugStart className="react-icon" />
+              )
+            }
             onClick={() =>
               connected ? disconnectOVSDB() : setShowConnectModal(true)
             }

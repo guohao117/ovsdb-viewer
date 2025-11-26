@@ -1,3 +1,7 @@
+:root {
+    --tree-icon-translate: 0.12em;
+}
+
 /* Minimal CSS for dark theme compatibility */
 #app {
     height: 100vh;
@@ -212,4 +216,71 @@
     padding: 16px;
     color: white;
     text-align: center;
+}
+
+/* Sider header (DBs) - shows DB list root / JSON-like database label */
+.sider-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+}
+.left-sider .react-icon {
+    /* Slightly enlarge and vertically center icons in the Sider area so they
+     visually line up better with the adjacent text. */
+    width: 1.15em;
+    height: 1.15em;
+    font-size: 1.15em;
+    vertical-align: -0.08em;
+}
+
+/* Sider tree node content uses inline-flex so icon + title vertically align */
+
+/* Remove per-node transforms; flex alignment handles consistent centering */
+.left-sider .ant-tree .tree-icon,
+.left-sider .ant-tree .tree-icon svg,
+.left-sider .ant-tree svg.tree-icon {
+    transform: translateY(var(--tree-icon-translate));
+}
+
+/* JSON-like icon (simple curly brace text styled as an icon) */
+/* JSON-like small icon (curly braces) */
+/* JSON-like small icon and react-icons (tie to primary color) */
+/* icon common styling */
+.react-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: monospace;
+    /* let svg scale with surrounding font size */
+    font-size: inherit;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    padding: 0;
+    color: var(--color-primary, var(--ant-primary-color, #1677ff));
+    line-height: 1;
+    vertical-align: baseline;
+}
+
+/* Ensure SVG icons inside the react-icon are sized and aligned nicely */
+.react-icon svg {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: middle;
+    transform: none;
+}
+
+/* Tab label icons are smaller and match the tab text size */
+.tab-label .react-icon svg {
+    width: 0.875em;
+    height: 0.875em;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* Sider title next to JSON icon */
+.sider-title {
+    font-weight: 600;
+    color: white;
 }
