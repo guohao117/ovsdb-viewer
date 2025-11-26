@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 import schema from "./schema.json";
 import {
@@ -12,9 +12,12 @@ import {
   Form,
   Input,
   Select,
-  Checkbox,
   List,
   Space,
+  Tabs,
+  Table,
+  Popover,
+  Drawer,
 } from "antd";
 import {
   DatabaseOutlined,
@@ -85,6 +88,13 @@ function App() {
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [monitoredTables, setMonitoredTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  // refs & offsets for sticky tab & table calculations
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const [tabsOffset, setTabsOffset] = useState<number>(0);
+  const tableSectionRef = useRef<HTMLDivElement | null>(null);
+  const [tableBodyHeight, setTableBodyHeight] = useState<number | undefined>(
+    undefined,
+  );
 
   // OVSDB data states
   const [bridges, setBridges] = useState<any[]>([]);
@@ -95,16 +105,14 @@ function App() {
   const [expandedCells, setExpandedCells] = useState<{
     [key: string]: boolean;
   }>({});
-  const [selectedTables, setSelectedTables] = useState<string[]>([
-    "bridges",
-    "ports",
-    "interfaces",
-    "openvSwitch",
-  ]);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [drawerTitle, setDrawerTitle] = useState<string | null>(null);
+  const [drawerContent, setDrawerContent] = useState<any | null>(null);
+  // NOTE: 'selectedTables' state removed. Use Sider to open/close tables and
+  // keep a single source of truth in `monitoredTables`.
 
-  async function connectOVSDB(selectedTablesParam: string[]) {
+  async function connectOVSDB() {
     try {
-      console.log("selectedTables:", selectedTablesParam);
       setConnectionStatus("Connecting...");
       const jumpHostsArray = jumpHosts
         .split(",")
@@ -121,11 +129,12 @@ function App() {
       );
       setConnected(true);
       setConnectionStatus("Connected successfully!");
-      setMonitoredTables(selectedTablesParam);
-      setSelectedTable(selectedTablesParam[0] || null);
       setShowConnectModal(false);
       loadHistory(); // Reload history after successful connection
-      // loadData will be triggered by useEffect when monitoredTables changes
+      // If a table is already selected, load just that one (useEffect also covers this)
+      if (selectedTable) {
+        loadDataForTable(selectedTable);
+      }
     } catch (error) {
       setConnectionStatus(`Connection failed: ${error}`);
     }
@@ -148,48 +157,33 @@ function App() {
     }
   }
 
-  async function loadData() {
+  async function loadDataForTable(key: string) {
     try {
-      setDataStatus("Loading data...");
-      console.log("monitoredTables in loadData:", monitoredTables);
-      const promises: Promise<any>[] = [];
-      const dataSetters: string[] = [];
-      monitoredTables.forEach((key) => {
-        const option = tableOptions.find((o) => o.key === key);
-        if (option) {
-          promises.push(
-            key === "bridges"
-              ? GetBridges()
-              : key === "ports"
-                ? GetPorts()
-                : key === "interfaces"
-                  ? GetInterfaces()
-                  : key === "openvSwitch"
-                    ? GetOpenvSwitch()
-                    : Promise.resolve([]),
-          );
-          dataSetters.push(key);
-        }
-      });
-      const results = await Promise.all(promises);
-      console.log("loadData results:", results);
-      dataSetters.forEach((key, index) => {
-        const setter =
-          key === "bridges"
-            ? setBridges
-            : key === "ports"
-              ? setPorts
-              : key === "interfaces"
-                ? setInterfaces
-                : key === "openvSwitch"
-                  ? setOpenvSwitch
-                  : () => {};
-        setter(results[index]);
-      });
+      if (!connected) {
+        setDataStatus("Not connected");
+        return;
+      }
+      setDataStatus(`Loading ${key}...`);
+      console.log("loadDataForTable: key =", key);
+      if (key === "bridges") {
+        const res = await GetBridges();
+        setBridges(res);
+      } else if (key === "ports") {
+        const res = await GetPorts();
+        setPorts(res);
+      } else if (key === "interfaces") {
+        const res = await GetInterfaces();
+        setInterfaces(res);
+      } else if (key === "openvSwitch") {
+        const res = await GetOpenvSwitch();
+        setOpenvSwitch(res);
+      } else {
+        // unknown key - nothing to load
+      }
       setDataStatus("Data loaded successfully");
     } catch (error) {
-      console.log("loadData error:", error);
-      setDataStatus(`Failed to load data: ${error}`);
+      console.log("loadDataForTable error:", error);
+      setDataStatus(`Failed to load data for ${key}: ${error}`);
     }
   }
 
@@ -205,6 +199,12 @@ function App() {
     setExpandedCells((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function openDrawer(title: string, content: any) {
+    setDrawerTitle(title);
+    setDrawerContent(content);
+    setDrawerVisible(true);
+  }
+
   function isSmallComplex(value: any): boolean {
     if (Array.isArray(value)) {
       return value.length < 3;
@@ -218,7 +218,7 @@ function App() {
   function renderTable(title: string, data: any[], tableName: string) {
     if (!schema || !schema.tables || !(schema.tables as any)[tableName]) {
       return (
-        <div className="table-section">
+        <div className="table-section" ref={tableSectionRef}>
           <h3>{title}</h3>
           <p>Schema not loaded or table not found</p>
         </div>
@@ -226,9 +226,57 @@ function App() {
     }
 
     const tableSchema = (schema.tables as any)[tableName];
-    const columns = Object.keys(tableSchema.columns).map((field) => ({
-      field: toCamelCase(field), // Convert to Go struct field name
-      label: field.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()), // Human readable label
+    const columns = Object.keys(tableSchema.columns).map((field) => {
+      const dataIndex = toCamelCase(field); // Convert to Go struct field name field -> data key
+      const label = field
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (l) => l.toUpperCase());
+      return {
+        title: label,
+        dataIndex,
+        key: dataIndex,
+        render: (value: any, record: any, rowIndex: number) => {
+          const cellKey = `${tableName}-${rowIndex}-${dataIndex}`;
+          const isComplex =
+            Array.isArray(value) ||
+            (typeof value === "object" && value !== null);
+          const small = isComplex && isSmallComplex(value);
+          if (!isComplex) {
+            return value || "-";
+          }
+          if (small) {
+            return <span>{JSON.stringify(value)}</span>;
+          }
+          if (expandedCells[cellKey]) {
+            return (
+              <>
+                <Button
+                  size="small"
+                  onClick={() => toggleCell(tableName, rowIndex, dataIndex)}
+                >
+                  Collapse
+                </Button>
+                <pre className="complex-value">
+                  {JSON.stringify(value, null, 2)}
+                </pre>
+              </>
+            );
+          }
+          return (
+            <Button
+              size="small"
+              onClick={() => toggleCell(tableName, rowIndex, dataIndex)}
+            >
+              {Array.isArray(value) ? `${value.length} items` : "View"}
+            </Button>
+          );
+        },
+      };
+    });
+
+    const dataSource = (data || []).map((row: any, i: number) => ({
+      ...row,
+      key: `${tableName}-${i}`,
     }));
 
     return (
@@ -239,68 +287,31 @@ function App() {
         {data.length === 0 ? (
           <p className="no-data">No data available</p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                {columns.map((col) => (
-                  <th key={col.field}>{col.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((item: any, index) => {
-                return (
-                  <tr key={index}>
-                    {columns.map((col) => {
-                      const value = item[col.field];
-                      const isComplex =
-                        Array.isArray(value) ||
-                        (typeof value === "object" && value !== null);
-                      const key = `${tableName}-${index}-${col.field}`;
-                      const isExpanded = expandedCells[key];
-                      const small = isComplex && isSmallComplex(value);
-                      return (
-                        <td key={col.field}>
-                          {isComplex ? (
-                            small ? (
-                              <span>{JSON.stringify(value)}</span>
-                            ) : isExpanded ? (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    toggleCell(tableName, index, col.field)
-                                  }
-                                  className="btn-small"
-                                >
-                                  Collapse
-                                </button>
-                                <pre className="complex-value">
-                                  {JSON.stringify(value, null, 2)}
-                                </pre>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() =>
-                                  toggleCell(tableName, index, col.field)
-                                }
-                                className="btn-small"
-                              >
-                                {Array.isArray(value)
-                                  ? `${value.length} items`
-                                  : "View"}
-                              </button>
-                            )
-                          ) : (
-                            value || "-"
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <Table
+            columns={columns}
+            dataSource={dataSource}
+            size="small"
+            pagination={false}
+            rowKey={(record) => record.key}
+            // Use scroll to allow horizontal scroll if many columns and set internal body height
+            scroll={
+              tableBodyHeight
+                ? { x: "max-content", y: tableBodyHeight }
+                : { x: "max-content" }
+            }
+            // Enable antd Table sticky header and offset the header by the tabs row height
+            sticky={{ offsetHeader: tabsOffset }}
+            expandable={{
+              // Row-level expand: show the full record as JSON when row expanded
+              expandedRowRender: (record) => (
+                <pre className="complex-value">
+                  {JSON.stringify(record, null, 2)}
+                </pre>
+              ),
+              // By default allow all rows to be expandable
+              rowExpandable: () => true,
+            }}
+          />
         )}
       </div>
     );
@@ -311,12 +322,45 @@ function App() {
     loadHistory();
   }, []);
 
-  // Load data when monitoredTables changes
+  // Compute table body scroll y (so Table uses an internal scroll area and header becomes fixed inside the table)
   useEffect(() => {
-    if (monitoredTables.length > 0) {
-      loadData();
+    const el = tableSectionRef.current;
+    if (!el) {
+      setTableBodyHeight(undefined);
+      return;
     }
-  }, [monitoredTables]);
+    function computeHeight() {
+      const sectionHeight = el.clientHeight || 0;
+      const titleEl = el.querySelector("h3") as HTMLElement | null;
+      const titleHeight = titleEl ? titleEl.offsetHeight : 36;
+      const style = window.getComputedStyle(el);
+      const paddingTop = parseFloat(style.paddingTop) || 0;
+      const paddingBottom = parseFloat(style.paddingBottom) || 0;
+      // Subtract title + padding to find available height for the table body
+      const computed = sectionHeight - titleHeight - paddingTop - paddingBottom;
+      setTableBodyHeight(computed > 0 ? computed : undefined);
+    }
+    computeHeight();
+
+    let ro: any;
+    if (typeof window !== "undefined" && (window as any).ResizeObserver) {
+      ro = new (window as any).ResizeObserver(() => computeHeight());
+      ro.observe(el);
+    } else {
+      window.addEventListener("resize", computeHeight);
+    }
+    return () => {
+      if (ro && typeof ro.disconnect === "function") ro.disconnect();
+      else window.removeEventListener("resize", computeHeight);
+    };
+  }, [monitoredTables, selectedTable, tabsOffset]);
+
+  // Load data for the selected table when the selected table or connection changes
+  useEffect(() => {
+    if (connected && selectedTable) {
+      loadDataForTable(selectedTable);
+    }
+  }, [selectedTable, connected]);
 
   async function loadHistory() {
     try {
@@ -371,6 +415,43 @@ function App() {
     }
   }
 
+  function getIconByKey(key: string) {
+    switch (key) {
+      case "bridges":
+        return <DatabaseOutlined />;
+      case "ports":
+        return <ApiOutlined />;
+      case "interfaces":
+        return <GlobalOutlined />;
+      case "openvSwitch":
+        return <SettingOutlined />;
+      default:
+        return <DatabaseOutlined />;
+    }
+  }
+
+  function removeTab(targetKey: string) {
+    // Compute new set of tabs
+    const newTabs = monitoredTables.filter((k) => k !== targetKey);
+
+    // Update monitoredTables and selectedTables
+    setMonitoredTables(newTabs);
+
+    // Clear data for removed table to keep state consistent
+    if (targetKey === "bridges") setBridges([]);
+    else if (targetKey === "ports") setPorts([]);
+    else if (targetKey === "interfaces") setInterfaces([]);
+    else if (targetKey === "openvSwitch") setOpenvSwitch([]);
+
+    // If the closed tab was selected, choose a sensible new selection
+    if (selectedTable === targetKey) {
+      const idx = monitoredTables.indexOf(targetKey);
+      const newSelected =
+        newTabs[idx] || newTabs[idx - 1] || newTabs[0] || null;
+      setSelectedTable(newSelected);
+    }
+  }
+
   const dataMap: { [key: string]: any[] } = {
     bridges,
     ports,
@@ -386,49 +467,81 @@ function App() {
           <Menu
             mode="inline"
             selectedKeys={selectedTable ? [selectedTable] : []}
-            onClick={({ key }: { key: string }) => setSelectedTable(key)}
-            items={monitoredTables.map((key) => {
-              const option = tableOptions.find((o) => o.key === key);
-              let icon;
-              switch (key) {
-                case "bridges":
-                  icon = <DatabaseOutlined />;
-                  break;
-                case "ports":
-                  icon = <ApiOutlined />;
-                  break;
-                case "interfaces":
-                  icon = <GlobalOutlined />;
-                  break;
-                case "openvSwitch":
-                  icon = <SettingOutlined />;
-                  break;
-                default:
-                  icon = <DatabaseOutlined />;
+            onClick={({ key }: { key: string }) => {
+              // If the clicked table isn't opened, add it to monitoredTables (open a new tab)
+              setMonitoredTables((prev) => {
+                if (!prev.includes(key)) {
+                  return [...prev, key];
+                }
+                return prev;
+              });
+              // Focus the clicked/opened table
+              setSelectedTable(key);
+              // Load data for just that opened table (instead of all monitored tables)
+              if (connected) {
+                loadDataForTable(key);
               }
+            }}
+            items={tableOptions.map((option) => {
+              const key = option.key;
               return {
                 key,
-                icon,
-                label: option?.label,
+                icon: getIconByKey(key),
+                label: option.label,
               };
             })}
           />
         </Layout.Sider>
         <Layout className="main-layout">
-          <Layout.Header>
-            <Breadcrumb>
-              <Breadcrumb.Item>OVSDB</Breadcrumb.Item>
-              <Breadcrumb.Item>
-                {selectedTable
-                  ? tableOptions.find((o) => o.key === selectedTable)?.label
-                  : "Home"}
-              </Breadcrumb.Item>
-            </Breadcrumb>
-            {selectedTable && (
-              <span>({dataMap[selectedTable]?.length || 0} rows)</span>
-            )}
+          <Layout.Header className="header">
+            <div className="header-top">
+              <Breadcrumb>
+                <Breadcrumb.Item>OVSDB</Breadcrumb.Item>
+                <Breadcrumb.Item>
+                  {selectedTable
+                    ? tableOptions.find((o) => o.key === selectedTable)?.label
+                    : "Home"}
+                </Breadcrumb.Item>
+              </Breadcrumb>
+              {selectedTable && (
+                <span>({dataMap[selectedTable]?.length || 0} rows)</span>
+              )}
+            </div>
           </Layout.Header>
           <Layout.Content className="content">
+            {monitoredTables && monitoredTables.length > 0 && (
+              <div className="tabs-row" ref={tabsRef}>
+                <Tabs
+                  activeKey={selectedTable || undefined}
+                  onChange={(key) => {
+                    setSelectedTable(key);
+                    if (connected) {
+                      loadDataForTable(key);
+                    }
+                  }}
+                  type="editable-card"
+                  hideAdd
+                  onEdit={(targetKey, action) => {
+                    if (action === "remove") {
+                      removeTab(targetKey as string);
+                    }
+                  }}
+                  items={monitoredTables.map((key) => {
+                    const option = tableOptions.find((o) => o.key === key);
+                    return {
+                      key,
+                      label: (
+                        <span className="tab-label">
+                          {getIconByKey(key)}
+                          <span>{option?.label}</span>
+                        </span>
+                      ),
+                      closable: true,
+                    };
+                  })}
+                />
+              </div>
+            )}
             {selectedTable ? (
               (() => {
                 const option = tableOptions.find(
@@ -465,6 +578,16 @@ function App() {
             {connected ? "Disconnect" : "Connect"}
           </Button>
         </Layout.Footer>
+        <Drawer
+          title={drawerTitle}
+          open={drawerVisible}
+          onClose={() => setDrawerVisible(false)}
+          width={700}
+        >
+          <pre className="complex-value">
+            {JSON.stringify(drawerContent, null, 2)}
+          </pre>
+        </Drawer>
         <Modal
           title="Connect to OVSDB"
           open={showConnectModal}
@@ -475,7 +598,7 @@ function App() {
           <Form
             form={form}
             layout="vertical"
-            onFinish={(values) => connectOVSDB(values.selectedTables)}
+            onFinish={() => connectOVSDB()}
             initialValues={{
               host,
               port,
@@ -484,7 +607,6 @@ function App() {
               endpoint,
               jumpHosts,
               localForwarderType,
-              selectedTables,
             }}
           >
             <Form.Item label="Host" name="host">
@@ -512,17 +634,7 @@ function App() {
                 <Select.Option value="auto">Auto</Select.Option>
               </Select>
             </Form.Item>
-            <Form.Item label="Select Tables to Monitor" name="selectedTables">
-              <Checkbox.Group
-                onChange={(checkedValues) => setSelectedTables(checkedValues)}
-              >
-                {tableOptions.map((option) => (
-                  <Checkbox key={option.key} value={option.key}>
-                    {option.label}
-                  </Checkbox>
-                ))}
-              </Checkbox.Group>
-            </Form.Item>
+
             <Form.Item>
               <Space>
                 <Button type="primary" htmlType="submit">

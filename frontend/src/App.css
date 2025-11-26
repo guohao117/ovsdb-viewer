@@ -20,6 +20,31 @@
     font-weight: bold;
 }
 
+/* Make table header sticky within the scrollable table section
+   and ensure it doesn't get overlapped by the sticky tab row above. */
+.table-section .data-table thead th {
+    position: sticky;
+    top: 0; /* stick to the top of the table-section */
+    z-index: 4;
+    background: var(--ant-layout-header-background, #111);
+    /* Keep the text readable in sticky state */
+    color: inherit;
+}
+
+/* Make antd Table header sticky within the same scrollable table section */
+.table-section .ant-table thead th {
+    position: sticky;
+    top: 0; /* stick to the top of the table-section */
+    z-index: 4;
+    background: var(--ant-layout-header-background, #111);
+    /* Keep the text readable in sticky state */
+    color: inherit;
+}
+
+/* If you prefer to align the sticky table header precisely below the
+   tabs-row, update the `top` value above or define a CSS variable
+   for the tab-row height and use `top: var(--tabs-height)` */
+
 /* Welcome Section */
 .welcome {
     text-align: center;
@@ -60,6 +85,8 @@
 .content {
     flex: 1;
     overflow: hidden;
+    padding-top: 8px; /* ensure content does not sit under header/tabs */
+    box-sizing: border-box;
 }
 
 .footer {
@@ -71,4 +98,118 @@
     display: flex;
     justify-content: flex-start;
     align-items: center;
+}
+
+/* Header & Tab bar styling (for VSCode-like tabs) */
+.header {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    /* ensure header height grows to contain tabs instead of staying fixed */
+    height: auto !important;
+    padding: 8px 16px;
+    align-items: stretch;
+    background: var(--ant-layout-header-background, #111);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    z-index: 2;
+    line-height: normal;
+}
+
+/* Override Ant Design default header height in case its selector is more specific */
+.ant-layout-header.header {
+    height: auto !important;
+    line-height: normal !important;
+}
+
+/* Top header row with breadcrumb and item count */
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.header-top .ant-breadcrumb {
+    margin-bottom: 0;
+}
+
+/* Left side wrapper (breadcrumb + rows count) */
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Tabs row sits at the top of content and keeps table from overlapping */
+.tabs-row {
+    width: 100%;
+    /* smaller vertical padding and clearer separation */
+    padding: 8px 0;
+    /* keep tabs visible at top while scrolling the content area */
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    /* use header color so tab row stands out from table content */
+    background: var(--ant-layout-header-background, rgba(17, 17, 17, 0.95));
+    /* subtle bottom border to separate tabs from the table area */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 8px;
+}
+
+/* set ant-tabs container to be transparent, but keep spacing */
+.tabs-row .ant-tabs {
+    background: transparent;
+    padding: 0;
+}
+
+/* ensure the tabs navigation fills the row width */
+.tabs-row .ant-tabs-nav {
+    width: 100%;
+}
+
+.tab-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.btn-open {
+    margin-left: 8px;
+}
+
+/* Make editable-card tabs look closer to VSCode's style */
+.ant-tabs.ant-tabs-editable-card .ant-tabs-nav .ant-tabs-tab {
+    background: transparent;
+    margin-right: 6px;
+    border: none;
+    border-radius: 2px 2px 0 0;
+    padding: 6px 10px;
+    transition: background 0.15s ease;
+}
+
+/* Active tab highlight to indicate selection */
+.ant-tabs.ant-tabs-editable-card .ant-tabs-nav .ant-tabs-tab-active {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: inherit;
+    border-bottom: 2px solid var(--ant-primary-color, #1677ff);
+}
+
+/* Keep the tabs vertically centered */
+.ant-tabs-nav .ant-tabs-nav-list {
+    align-items: center;
+}
+
+/* Hide overflow in the tab nav so it aligns nicely */
+.ant-tabs-nav-wrap {
+    overflow: hidden;
+}
+
+/* Make the icons in tabs match the font-size used by the text */
+.ant-tabs-nav .ant-tabs-tab .anticon {
+    font-size: 14px;
+}
+
+/* Logo minor layout */
+.logo {
+    font-weight: bold;
+    padding: 16px;
+    color: white;
+    text-align: center;
 }
