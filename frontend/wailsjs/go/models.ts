@@ -29,7 +29,24 @@ export namespace main {
 
 }
 
-export namespace model {
+export namespace ovsdb {
+	
+	export class OVSDBClient {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new OVSDBClient(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
+	}
+
+}
+
+export namespace vswitch {
 	
 	export class Bridge {
 	    UUID: string;
@@ -269,23 +286,6 @@ export namespace model {
 	        this.Tag = source["Tag"];
 	        this.Trunks = source["Trunks"];
 	        this.VLANMode = source["VLANMode"];
-	    }
-	}
-
-}
-
-export namespace ovsdb {
-	
-	export class OVSDBClient {
-	
-	
-	    static createFrom(source: any = {}) {
-	        return new OVSDBClient(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	
 	    }
 	}
 

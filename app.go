@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"ovsdb-viewer/internal/ovsdb"
-	"ovsdb-viewer/internal/ovsdb/model"
+	vswitch "ovsdb-viewer/internal/ovsdb/model/vswitch"
 )
 
 // App struct
@@ -155,7 +155,7 @@ func (a *App) GetOVSDBClient() *ovsdb.OVSDBClient {
 }
 
 // GetBridges retrieves all bridges from the OVSDB
-func (a *App) GetBridges() ([]model.Bridge, error) {
+func (a *App) GetBridges() ([]vswitch.Bridge, error) {
 	if a.ovsdbClient == nil {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -163,7 +163,7 @@ func (a *App) GetBridges() ([]model.Bridge, error) {
 }
 
 // GetPorts retrieves all ports from the OVSDB
-func (a *App) GetPorts() ([]model.Port, error) {
+func (a *App) GetPorts() ([]vswitch.Port, error) {
 	if a.ovsdbClient == nil {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -171,7 +171,7 @@ func (a *App) GetPorts() ([]model.Port, error) {
 }
 
 // GetInterfaces retrieves all interfaces from the OVSDB
-func (a *App) GetInterfaces() ([]model.Interface, error) {
+func (a *App) GetInterfaces() ([]vswitch.Interface, error) {
 	if a.ovsdbClient == nil {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -179,7 +179,7 @@ func (a *App) GetInterfaces() ([]model.Interface, error) {
 }
 
 // GetOpenvSwitch retrieves the Open_vSwitch table data
-func (a *App) GetOpenvSwitch() ([]model.OpenvSwitch, error) {
+func (a *App) GetOpenvSwitch() ([]vswitch.OpenvSwitch, error) {
 	if a.ovsdbClient == nil {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -188,7 +188,7 @@ func (a *App) GetOpenvSwitch() ([]model.OpenvSwitch, error) {
 
 // GetSchema returns the OVSDB schema as JSON string
 func (a *App) GetSchema() (string, error) {
-	schema := model.Schema()
+	schema := vswitch.Schema()
 	data, err := json.Marshal(schema)
 	if err != nil {
 		return "", err

@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"log"
 
-	ovsmodel "ovsdb-viewer/internal/ovsdb/model"
+	vswitch "ovsdb-viewer/internal/ovsdb/model/vswitch"
 
-	"github.com/ovn-org/libovsdb/client"
+	ovsdbclient "github.com/ovn-kubernetes/libovsdb/client"
 )
 
 // OVSDBClient wraps the libovsdb client with SSH tunneling support
 type OVSDBClient struct {
-	client client.Client
+	client ovsdbclient.Client
 	tunnel *Tunnel
 }
 
@@ -35,7 +35,7 @@ func (c *OVSDBClient) Connect(config ConnectionConfig, endpoint string) error {
 	}
 
 	// Create OVSDB client
-	dbModel, err := ovsmodel.FullDatabaseModel()
+	dbModel, err := vswitch.FullDatabaseModel()
 	if err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
@@ -43,7 +43,7 @@ func (c *OVSDBClient) Connect(config ConnectionConfig, endpoint string) error {
 		return fmt.Errorf("failed to create DB model: %w", err)
 	}
 	log.Printf("Connecting to database: %s", dbModel.Name())
-	ovsdbClient, err := client.NewOVSDBClient(dbModel, client.WithEndpoint(localEndpoint))
+	ovsdbClient, err := ovsdbclient.NewOVSDBClient(dbModel, ovsdbclient.WithEndpoint(localEndpoint))
 	if err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
@@ -86,37 +86,37 @@ func (c *OVSDBClient) Disconnect() error {
 }
 
 // GetClient returns the underlying libovsdb client for direct operations
-func (c *OVSDBClient) GetClient() client.Client {
+func (c *OVSDBClient) GetClient() ovsdbclient.Client {
 	return c.client
 }
 
 // GetBridges retrieves all bridges from the OVSDB
-func (c *OVSDBClient) GetBridges() ([]ovsmodel.Bridge, error) {
-	var bridges []ovsmodel.Bridge
+func (c *OVSDBClient) GetBridges() ([]vswitch.Bridge, error) {
+	var bridges []vswitch.Bridge
 	err := c.client.List(context.Background(), &bridges)
 	log.Printf("GetBridges: bridges=%+v, err=%v", bridges, err)
 	return bridges, err
 }
 
 // GetPorts retrieves all ports from the OVSDB
-func (c *OVSDBClient) GetPorts() ([]ovsmodel.Port, error) {
-	var ports []ovsmodel.Port
+func (c *OVSDBClient) GetPorts() ([]vswitch.Port, error) {
+	var ports []vswitch.Port
 	err := c.client.List(context.Background(), &ports)
 	log.Printf("GetPorts: ports=%+v, err=%v", ports, err)
 	return ports, err
 }
 
 // GetInterfaces retrieves all interfaces from the OVSDB
-func (c *OVSDBClient) GetInterfaces() ([]ovsmodel.Interface, error) {
-	var interfaces []ovsmodel.Interface
+func (c *OVSDBClient) GetInterfaces() ([]vswitch.Interface, error) {
+	var interfaces []vswitch.Interface
 	err := c.client.List(context.Background(), &interfaces)
 	log.Printf("GetInterfaces: interfaces=%+v, err=%v", interfaces, err)
 	return interfaces, err
 }
 
 // GetOpenvSwitch retrieves the Open_vSwitch table data
-func (c *OVSDBClient) GetOpenvSwitch() ([]ovsmodel.OpenvSwitch, error) {
-	var ovs []ovsmodel.OpenvSwitch
+func (c *OVSDBClient) GetOpenvSwitch() ([]vswitch.OpenvSwitch, error) {
+	var ovs []vswitch.OpenvSwitch
 	err := c.client.List(context.Background(), &ovs)
 	log.Printf("GetOpenvSwitch: ovs=%+v, err=%v", ovs, err)
 	return ovs, err
