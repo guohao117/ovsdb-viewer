@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
-import schema from "./schema.json";
 import {
   Layout,
   Button,
@@ -29,32 +28,10 @@ import {
   DisconnectOVSDB,
   GetHistory,
   DeleteHistory,
-  GetBridges,
-  GetPorts,
-  GetInterfaces,
-  GetOpenvSwitch,
+  GetSchema,
+  GetTable,
 } from "../wailsjs/go/main/App";
-const tableOptions = [
-  {
-    key: "bridges",
-    label: "Bridges",
-    method: "GetBridges",
-    tableName: "Bridge",
-  },
-  { key: "ports", label: "Ports", method: "GetPorts", tableName: "Port" },
-  {
-    key: "interfaces",
-    label: "Interfaces",
-    method: "GetInterfaces",
-    tableName: "Interface",
-  },
-  {
-    key: "openvSwitch",
-    label: "Open vSwitch",
-    method: "GetOpenvSwitch",
-    tableName: "Open_vSwitch",
-  },
-];
+import { ovsdb } from "../wailsjs/go/models";
 
 interface ConnectionHistory {
   id: string;
@@ -96,10 +73,8 @@ function App() {
   );
 
   // OVSDB data states
-  const [bridges, setBridges] = useState<any[]>([]);
-  const [ports, setPorts] = useState<any[]>([]);
-  const [interfaces, setInterfaces] = useState<any[]>([]);
-  const [openvSwitch, setOpenvSwitch] = useState<any[]>([]);
+  const [schema, setSchema] = useState<ovsdb.DatabaseSchema | null>(null);
+  const [tableData, setTableData] = useState<{ [key: string]: any[] }>({});
   const [dataStatus, setDataStatus] = useState("");
   const [expandedCells, setExpandedCells] = useState<{
     [key: string]: boolean;
@@ -130,6 +105,9 @@ function App() {
       setConnectionStatus("Connected successfully!");
       setShowConnectModal(false);
       loadHistory(); // Reload history after successful connection
+      // Load schema
+      const dbSchema = await GetSchema();
+      setSchema(dbSchema);
       // If a table is already selected, load just that one (useEffect also covers this)
       if (selectedTable) {
         loadDataForTable(selectedTable);
@@ -145,10 +123,8 @@ function App() {
       setConnected(false);
       setConnectionStatus("Disconnected");
       // Clear data
-      setBridges([]);
-      setPorts([]);
-      setInterfaces([]);
-      setOpenvSwitch([]);
+      setSchema(null);
+      setTableData({});
       setMonitoredTables([]);
       setSelectedTable(null);
     } catch (error) {
@@ -156,41 +132,21 @@ function App() {
     }
   }
 
-  async function loadDataForTable(key: string) {
+  async function loadDataForTable(tableName: string) {
     try {
       if (!connected) {
         setDataStatus("Not connected");
         return;
       }
-      setDataStatus(`Loading ${key}...`);
-      console.log("loadDataForTable: key =", key);
-      if (key === "bridges") {
-        const res = await GetBridges();
-        setBridges(res);
-      } else if (key === "ports") {
-        const res = await GetPorts();
-        setPorts(res);
-      } else if (key === "interfaces") {
-        const res = await GetInterfaces();
-        setInterfaces(res);
-      } else if (key === "openvSwitch") {
-        const res = await GetOpenvSwitch();
-        setOpenvSwitch(res);
-      } else {
-        // unknown key - nothing to load
-      }
+      setDataStatus(`Loading ${tableName}...`);
+      console.log("loadDataForTable: tableName =", tableName);
+      const res = await GetTable(tableName);
+      setTableData((prev) => ({ ...prev, [tableName]: res }));
       setDataStatus("Data loaded successfully");
     } catch (error) {
       console.log("loadDataForTable error:", error);
-      setDataStatus(`Failed to load data for ${key}: ${error}`);
+      setDataStatus(`Failed to load data for ${tableName}: ${error}`);
     }
-  }
-
-  function toCamelCase(str: string): string {
-    return str
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join("");
   }
 
   function toggleCell(tableName: string, index: number, field: string) {
@@ -224,18 +180,53 @@ function App() {
       );
     }
 
+    // Ensure data is an array
+    const safeData = data || [];
+
     const tableSchema = (schema.tables as any)[tableName];
-    const columns = Object.keys(tableSchema.columns).map((field) => {
-      const dataIndex = toCamelCase(field); // Convert to Go struct field name field -> data key
-      const label = field
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (l) => l.toUpperCase());
-      return {
-        title: label,
-        dataIndex,
-        key: dataIndex,
-        render: (value: any, record: any, rowIndex: number) => {
-          const cellKey = `${tableName}-${rowIndex}-${dataIndex}`;
+    
+    // Create index column definitions first
+    const indexColumns = (tableSchema.indexes || []).flatMap((indexArray: string[]) => 
+      indexArray.map((field: string) => {
+        const label = field
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase());
+        return {
+          field,
+          title: label,
+          dataIndex: field,
+          key: field,
+        };
+      })
+    );
+    
+    // Get index field names for filtering
+    const indexFieldNames = new Set(
+      (tableSchema.indexes || []).flatMap((indexArray: string[]) => indexArray)
+    );
+    
+    // Create regular columns, excluding index fields
+    const regularColumns = Object.keys(tableSchema.columns)
+      .filter((field) => !indexFieldNames.has(field))
+      .map((field) => {
+        const label = field
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase());
+        return {
+          field,
+          title: label,
+          dataIndex: field,
+          key: field,
+        };
+      });
+    
+    // Combine index columns first, then regular columns
+    const allColumns = [...indexColumns, ...regularColumns];
+    
+    const columns = allColumns.map((col) => ({
+      ...col,
+      render: (value: any, record: any, rowIndex: number) => {
+          const cellKey = `${tableName}-${rowIndex}-${col.dataIndex}`;
           const isComplex =
             Array.isArray(value) ||
             (typeof value === "object" && value !== null);
@@ -251,7 +242,7 @@ function App() {
               <>
                 <Button
                   size="small"
-                  onClick={() => toggleCell(tableName, rowIndex, dataIndex)}
+                  onClick={() => toggleCell(tableName, rowIndex, col.dataIndex)}
                 >
                   Collapse
                 </Button>
@@ -264,16 +255,16 @@ function App() {
           return (
             <Button
               size="small"
-              onClick={() => toggleCell(tableName, rowIndex, dataIndex)}
+              onClick={() => toggleCell(tableName, rowIndex, col.dataIndex)}
             >
               {Array.isArray(value) ? `${value.length} items` : "View"}
             </Button>
           );
         },
-      };
-    });
+      }
+    ));
 
-    const dataSource = (data || []).map((row: any, i: number) => ({
+    const dataSource = safeData.map((row: any, i: number) => ({
       ...row,
       key: `${tableName}-${i}`,
     }));
@@ -281,9 +272,9 @@ function App() {
     return (
       <div className="table-section">
         <h3>
-          {title} ({data.length})
+          {title} ({safeData.length})
         </h3>
-        {data.length === 0 ? (
+        {safeData.length === 0 ? (
           <p className="no-data">No data available</p>
         ) : (
           <Table
@@ -423,16 +414,17 @@ function App() {
 
   function removeTab(targetKey: string) {
     // Compute new set of tabs
-    const newTabs = monitoredTables.filter((k) => k !== targetKey);
+    const newTabs = monitoredTables.filter((tableName) => tableName !== targetKey);
 
-    // Update monitoredTables and selectedTables
+    // Update monitoredTables
     setMonitoredTables(newTabs);
 
     // Clear data for removed table to keep state consistent
-    if (targetKey === "bridges") setBridges([]);
-    else if (targetKey === "ports") setPorts([]);
-    else if (targetKey === "interfaces") setInterfaces([]);
-    else if (targetKey === "openvSwitch") setOpenvSwitch([]);
+    setTableData((prev) => {
+      const newData = { ...prev };
+      delete newData[targetKey];
+      return newData;
+    });
 
     // If the closed tab was selected, choose a sensible new selection
     if (selectedTable === targetKey) {
@@ -448,12 +440,7 @@ function App() {
     return <VscTable className="react-icon" />;
   }
 
-  const dataMap: { [key: string]: any[] } = {
-    bridges,
-    ports,
-    interfaces,
-    openvSwitch,
-  };
+  const dataMap = tableData;
 
   return (
     <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, cssVar: true }}>
@@ -469,27 +456,27 @@ function App() {
             defaultExpandAll
             selectedKeys={selectedTable ? [selectedTable] : []}
             onSelect={(selectedKeys: any, info: any) => {
-              const key =
+              const tableName =
                 selectedKeys && selectedKeys.length
                   ? String(selectedKeys[0])
                   : "";
               // If clicking root (db-root) or nothing, do not select a table
-              if (!key || key === "db-root") {
+              if (!tableName || tableName === "db-root") {
                 setSelectedTable(null);
                 return;
               }
               // If the clicked table isn't opened, add it to monitoredTables (open a new tab)
               setMonitoredTables((prev) => {
-                if (!prev.includes(key)) {
-                  return [...prev, key];
+                if (!prev.includes(tableName)) {
+                  return [...prev, tableName];
                 }
                 return prev;
               });
               // Focus the clicked/opened table
-              setSelectedTable(key);
-              // Load data for just that opened table (instead of all monitored tables)
+              setSelectedTable(tableName);
+              // Load data for just that opened table
               if (connected) {
-                loadDataForTable(key);
+                loadDataForTable(tableName);
               }
             }}
             treeData={[
@@ -497,11 +484,13 @@ function App() {
                 title: schema?.name || "Open_vSwitch",
                 key: "db-root",
                 icon: <VscJson className="react-icon tree-icon" />,
-                children: tableOptions.map((option) => ({
-                  title: option.label,
-                  key: option.key,
-                  icon: <VscTable className="react-icon tree-icon" />,
-                })),
+                children: schema?.tables
+                  ? Object.keys(schema.tables).map((tableName) => ({
+                      title: tableName,
+                      key: tableName,
+                      icon: <VscTable className="react-icon tree-icon" />,
+                    }))
+                  : [],
               },
             ]}
           />
@@ -512,9 +501,7 @@ function App() {
               <Breadcrumb>
                 <Breadcrumb.Item>{schema?.name || "OVSDB"}</Breadcrumb.Item>
                 <Breadcrumb.Item>
-                  {selectedTable
-                    ? tableOptions.find((o) => o.key === selectedTable)?.label
-                    : "Home"}
+                  {selectedTable || "Home"}
                 </Breadcrumb.Item>
               </Breadcrumb>
               {selectedTable && (
@@ -540,14 +527,13 @@ function App() {
                       removeTab(targetKey as string);
                     }
                   }}
-                  items={monitoredTables.map((key) => {
-                    const option = tableOptions.find((o) => o.key === key);
+                  items={monitoredTables.map((tableName) => {
                     return {
-                      key,
+                      key: tableName,
                       label: (
                         <span className="tab-label">
-                          {getIconByKey(key)}
-                          <span>{option?.label}</span>
+                          {getIconByKey(tableName)}
+                          <span>{tableName}</span>
                         </span>
                       ),
                       closable: true,
@@ -557,20 +543,11 @@ function App() {
               </div>
             )}
             {selectedTable ? (
-              (() => {
-                const option = tableOptions.find(
-                  (o) => o.key === selectedTable,
-                );
-                return option ? (
-                  renderTable(
-                    option.label,
-                    dataMap[selectedTable],
-                    option.tableName,
-                  )
-                ) : (
-                  <p>Table not found</p>
-                );
-              })()
+              renderTable(
+                selectedTable,
+                dataMap[selectedTable],
+                selectedTable,
+              )
             ) : (
               <div className="welcome">
                 <h2>Welcome to OVSDB Viewer</h2>

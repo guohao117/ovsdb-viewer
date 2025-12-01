@@ -4,20 +4,24 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"reflect"
 
 	vswitch "ovsdb-viewer/internal/ovsdb/model/vswitch"
 
 	ovsdbclient "github.com/ovn-kubernetes/libovsdb/client"
+	ovsdbmodel "github.com/ovn-kubernetes/libovsdb/model"
+	ovsdbovsdb "github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
 // OVSDBClient wraps the libovsdb client with SSH tunneling support
 type OVSDBClient struct {
-	client ovsdbclient.Client
-	tunnel *Tunnel
+	client  ovsdbclient.Client
+	dbModel ovsdbmodel.DatabaseModel
+	tunnel  *Tunnel
 }
 
 // Connect establishes a connection to the OVSDB server, optionally through an SSH tunnel
-func (c *OVSDBClient) Connect(config ConnectionConfig, endpoint string) error {
+func (c *OVSDBClient) Connect(ctx context.Context, config ConnectionConfig, endpoint string) error {
 	var localEndpoint string
 	var tunnel *Tunnel
 	var err error
@@ -35,15 +39,24 @@ func (c *OVSDBClient) Connect(config ConnectionConfig, endpoint string) error {
 	}
 
 	// Create OVSDB client
-	dbModel, err := vswitch.FullDatabaseModel()
+	schema := vswitch.Schema()
+	clientModel, err := vswitch.FullDatabaseModel()
 	if err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
 		}
 		return fmt.Errorf("failed to create DB model: %w", err)
 	}
-	log.Printf("Connecting to database: %s", dbModel.Name())
-	ovsdbClient, err := ovsdbclient.NewOVSDBClient(dbModel, ovsdbclient.WithEndpoint(localEndpoint))
+	dbModel, verr := ovsdbmodel.NewDatabaseModel(schema, clientModel)
+	if verr != nil {
+		if tunnel != nil {
+			tunnel.Stop()
+		}
+		return fmt.Errorf("failed to create database model: %v", verr)
+	}
+	c.dbModel = dbModel
+	log.Printf("Connecting to database: %s", clientModel.Name())
+	ovsdbClient, err := ovsdbclient.NewOVSDBClient(clientModel, ovsdbclient.WithEndpoint(localEndpoint))
 	if err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
@@ -52,7 +65,6 @@ func (c *OVSDBClient) Connect(config ConnectionConfig, endpoint string) error {
 	}
 
 	// Connect
-	ctx := context.Background()
 	if err := ovsdbClient.Connect(ctx); err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
@@ -90,34 +102,61 @@ func (c *OVSDBClient) GetClient() ovsdbclient.Client {
 	return c.client
 }
 
-// GetBridges retrieves all bridges from the OVSDB
-func (c *OVSDBClient) GetBridges() ([]vswitch.Bridge, error) {
-	var bridges []vswitch.Bridge
-	err := c.client.List(context.Background(), &bridges)
-	log.Printf("GetBridges: bridges=%+v, err=%v", bridges, err)
-	return bridges, err
+func (c *OVSDBClient) GetSchema() *ovsdbovsdb.DatabaseSchema {
+	return &c.dbModel.Schema
 }
 
-// GetPorts retrieves all ports from the OVSDB
-func (c *OVSDBClient) GetPorts() ([]vswitch.Port, error) {
-	var ports []vswitch.Port
-	err := c.client.List(context.Background(), &ports)
-	log.Printf("GetPorts: ports=%+v, err=%v", ports, err)
-	return ports, err
+func (c *OVSDBClient) GetTable(ctx context.Context, table string) ([]map[string]any, error) {
+	modelType, ok := c.dbModel.Client().Types()[table]
+	if !ok {
+		return nil, fmt.Errorf("table %s not found in database model", table)
+	}
+
+	sliceType := reflect.SliceOf(modelType)
+	sliceValue := reflect.New(sliceType).Interface()
+	err := c.client.List(ctx, sliceValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list table %s: %w", table, err)
+	}
+
+	result := []map[string]any{}
+	slice := reflect.ValueOf(sliceValue).Elem()
+	for i := 0; i < slice.Len(); i++ {
+		model := slice.Index(i).Interface()
+		rowMap := structToMap(model)
+		result = append(result, rowMap)
+	}
+
+	return result, nil
 }
 
-// GetInterfaces retrieves all interfaces from the OVSDB
-func (c *OVSDBClient) GetInterfaces() ([]vswitch.Interface, error) {
-	var interfaces []vswitch.Interface
-	err := c.client.List(context.Background(), &interfaces)
-	log.Printf("GetInterfaces: interfaces=%+v, err=%v", interfaces, err)
-	return interfaces, err
-}
+func structToMap(model any) map[string]any {
+	result := make(map[string]any)
+	val := reflect.ValueOf(model)
 
-// GetOpenvSwitch retrieves the Open_vSwitch table data
-func (c *OVSDBClient) GetOpenvSwitch() ([]vswitch.OpenvSwitch, error) {
-	var ovs []vswitch.OpenvSwitch
-	err := c.client.List(context.Background(), &ovs)
-	log.Printf("GetOpenvSwitch: ovs=%+v, err=%v", ovs, err)
-	return ovs, err
+	// Handle pointer types safely
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return result
+		}
+		val = val.Elem()
+	}
+
+	// Ensure we have a struct
+	if val.Kind() != reflect.Struct {
+		return result
+	}
+
+	typ := val.Type()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		fieldValue := val.Field(i).Interface()
+		ovsdbTag := field.Tag.Get("ovsdb")
+		if ovsdbTag != "" {
+			result[ovsdbTag] = fieldValue
+		}
+	}
+
+	return result
 }

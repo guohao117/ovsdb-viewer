@@ -18,32 +18,20 @@ export function DisconnectOVSDB() {
   return window['go']['main']['App']['DisconnectOVSDB']();
 }
 
-export function GetBridges() {
-  return window['go']['main']['App']['GetBridges']();
-}
-
 export function GetHistory() {
   return window['go']['main']['App']['GetHistory']();
-}
-
-export function GetInterfaces() {
-  return window['go']['main']['App']['GetInterfaces']();
 }
 
 export function GetOVSDBClient() {
   return window['go']['main']['App']['GetOVSDBClient']();
 }
 
-export function GetOpenvSwitch() {
-  return window['go']['main']['App']['GetOpenvSwitch']();
-}
-
-export function GetPorts() {
-  return window['go']['main']['App']['GetPorts']();
-}
-
 export function GetSchema() {
   return window['go']['main']['App']['GetSchema']();
+}
+
+export function GetTable(arg1) {
+  return window['go']['main']['App']['GetTable'](arg1);
 }
 
 export function LoadHistory() {

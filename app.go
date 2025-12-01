@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"ovsdb-viewer/internal/ovsdb"
-	vswitch "ovsdb-viewer/internal/ovsdb/model/vswitch"
+
+	ovsdbovsdb "github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
 // App struct
@@ -43,7 +44,7 @@ func (a *App) ConnectOVSDB(host, user, keyFile, endpoint string, port int, jumpH
 	}
 
 	a.ovsdbClient = &ovsdb.OVSDBClient{}
-	err := a.ovsdbClient.Connect(config, endpoint)
+	err := a.ovsdbClient.Connect(a.ctx, config, endpoint)
 	if err == nil {
 		a.AddToHistory(ConnectionHistory{
 			Host:               host,
@@ -154,44 +155,15 @@ func (a *App) GetOVSDBClient() *ovsdb.OVSDBClient {
 	return a.ovsdbClient
 }
 
-// GetBridges retrieves all bridges from the OVSDB
-func (a *App) GetBridges() ([]vswitch.Bridge, error) {
+// GetSchema returns the OVSDB schema
+func (a *App) GetSchema() (*ovsdbovsdb.DatabaseSchema, error) {
+	return a.ovsdbClient.GetSchema(), nil
+}
+
+// GetTable retrieves all rows from the specified table as a slice of maps
+func (a *App) GetTable(table string) ([]map[string]any, error) {
 	if a.ovsdbClient == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	return a.ovsdbClient.GetBridges()
-}
-
-// GetPorts retrieves all ports from the OVSDB
-func (a *App) GetPorts() ([]vswitch.Port, error) {
-	if a.ovsdbClient == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	return a.ovsdbClient.GetPorts()
-}
-
-// GetInterfaces retrieves all interfaces from the OVSDB
-func (a *App) GetInterfaces() ([]vswitch.Interface, error) {
-	if a.ovsdbClient == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	return a.ovsdbClient.GetInterfaces()
-}
-
-// GetOpenvSwitch retrieves the Open_vSwitch table data
-func (a *App) GetOpenvSwitch() ([]vswitch.OpenvSwitch, error) {
-	if a.ovsdbClient == nil {
-		return nil, fmt.Errorf("not connected")
-	}
-	return a.ovsdbClient.GetOpenvSwitch()
-}
-
-// GetSchema returns the OVSDB schema as JSON string
-func (a *App) GetSchema() (string, error) {
-	schema := vswitch.Schema()
-	data, err := json.Marshal(schema)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+	return a.ovsdbClient.GetTable(a.ctx, table)
 }
