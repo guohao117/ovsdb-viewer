@@ -312,3 +312,26 @@
     font-weight: 600;
     color: white;
 }
+
+.endpoint-card {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.endpoint-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.tunnel-section {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 8px;
+    margin-top: 8px;
+}
+
+.connection-status {
+    margin-top: 12px;
+    font-style: italic;
+}

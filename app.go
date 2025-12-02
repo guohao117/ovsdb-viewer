@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"ovsdb-viewer/internal/ovsdb"
@@ -20,6 +21,8 @@ type App struct {
 	history     []ConnectionHistory
 }
 
+const historyVersion = 2
+
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{}
@@ -33,32 +36,42 @@ func (a *App) startup(ctx context.Context) {
 }
 
 // ConnectOVSDB connects to the OVSDB server using the provided configuration
-func (a *App) ConnectOVSDB(host, user, keyFile, endpoint string, port int, jumpHosts []string, localForwarderType string) error {
-	config := ovsdb.ConnectionConfig{
-		Host:               host,
-		Port:               port,
-		User:               user,
-		KeyFile:            keyFile,
-		JumpHosts:          jumpHosts,
-		LocalForwarderType: localForwarderType,
+func (a *App) ConnectOVSDB(req ConnectRequest) error {
+	endpoints := normalizeEndpoints(req.Endpoints)
+	if len(endpoints) == 0 {
+		return fmt.Errorf("no endpoints provided")
 	}
 
-	a.ovsdbClient = &ovsdb.OVSDBClient{}
-	err := a.ovsdbClient.Connect(a.ctx, config, endpoint)
-	if err == nil {
-		a.AddToHistory(ConnectionHistory{
-			Host:               host,
-			Port:               port,
-			User:               user,
-			KeyFile:            keyFile,
-			Endpoint:           endpoint,
-			JumpHosts:          jumpHosts,
-			LocalForwarderType: localForwarderType,
-			Timestamp:          time.Now().Unix(),
-		})
-		a.SaveHistory()
+	if a.ovsdbClient != nil {
+		_ = a.ovsdbClient.Disconnect()
+		a.ovsdbClient = nil
 	}
-	return err
+
+	var lastErr error
+	for _, ep := range endpoints {
+		client := &ovsdb.OVSDBClient{}
+		cfg := ovsdb.ConnectionConfig{}
+		if ep.Tunnel != nil {
+			cfg = tunnelConfigToConnectionConfig(ep.Tunnel)
+		}
+		err := client.Connect(a.ctx, cfg, ep.Endpoint)
+		if err == nil {
+			a.ovsdbClient = client
+			a.AddToHistory(ConnectionHistory{
+				Version:   historyVersion,
+				Endpoints: cloneEndpoints(endpoints),
+				Timestamp: time.Now().Unix(),
+			})
+			_ = a.SaveHistory()
+			return nil
+		}
+		lastErr = err
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all endpoints were empty")
+	}
+	return fmt.Errorf("failed to connect to any endpoint: %w", lastErr)
 }
 
 // DisconnectOVSDB disconnects from the OVSDB server
@@ -70,15 +83,38 @@ func (a *App) DisconnectOVSDB() error {
 }
 
 // ConnectionHistory represents a saved connection configuration
-type ConnectionHistory struct {
+type ConnectRequest struct {
+	Endpoints []EndpointConfig `json:"endpoints"`
+}
+
+type EndpointConfig struct {
+	Endpoint string        `json:"endpoint"`
+	Tunnel   *TunnelConfig `json:"tunnel,omitempty"`
+}
+
+type TunnelConfig struct {
 	Host               string   `json:"host"`
 	Port               int      `json:"port"`
 	User               string   `json:"user"`
 	KeyFile            string   `json:"keyFile"`
-	Endpoint           string   `json:"endpoint"`
 	JumpHosts          []string `json:"jumpHosts"`
 	LocalForwarderType string   `json:"localForwarderType"`
-	Timestamp          int64    `json:"timestamp"`
+}
+
+// ConnectionHistory represents a saved connection configuration
+type ConnectionHistory struct {
+	Version   int              `json:"version"`
+	Endpoints []EndpointConfig `json:"endpoints"`
+	Timestamp int64            `json:"timestamp"`
+
+	// Legacy fields kept for upgrade path
+	Host               string   `json:"host,omitempty"`
+	Port               int      `json:"port,omitempty"`
+	User               string   `json:"user,omitempty"`
+	KeyFile            string   `json:"keyFile,omitempty"`
+	Endpoint           string   `json:"endpoint,omitempty"`
+	JumpHosts          []string `json:"jumpHosts,omitempty"`
+	LocalForwarderType string   `json:"localForwarderType,omitempty"`
 }
 
 // GetHistory returns the connection history
@@ -88,14 +124,17 @@ func (a *App) GetHistory() []ConnectionHistory {
 
 // AddToHistory adds a new connection to history
 func (a *App) AddToHistory(conn ConnectionHistory) {
-	// Remove duplicates and keep only last 10
+	conn.Version = historyVersion
 	a.history = append([]ConnectionHistory{conn}, a.history...)
 	seen := make(map[string]bool)
 	var unique []ConnectionHistory
 	for _, h := range a.history {
-		key := fmt.Sprintf("%s:%d:%s:%s", h.Host, h.Port, h.User, h.Endpoint)
-		if !seen[key] {
-			seen[key] = true
+		sig := historySignature(h.Endpoints)
+		if sig == "" {
+			sig = fmt.Sprintf("entry-%d", len(unique))
+		}
+		if !seen[sig] {
+			seen[sig] = true
 			unique = append(unique, h)
 		}
 	}
@@ -138,7 +177,142 @@ func (a *App) LoadHistory() error {
 		}
 		return err
 	}
-	return json.Unmarshal(data, &a.history)
+	if err := json.Unmarshal(data, &a.history); err != nil {
+		return err
+	}
+	upgraded := false
+	for i, record := range a.history {
+		updated, changed := upgradeHistoryRecord(record)
+		if changed {
+			upgraded = true
+			a.history[i] = updated
+		}
+	}
+	if upgraded {
+		return a.SaveHistory()
+	}
+	return nil
+}
+
+func normalizeEndpoints(endpoints []EndpointConfig) []EndpointConfig {
+	cleaned := make([]EndpointConfig, 0, len(endpoints))
+	for _, ep := range endpoints {
+		ep.Endpoint = strings.TrimSpace(ep.Endpoint)
+		if ep.Endpoint == "" {
+			continue
+		}
+		if ep.Tunnel != nil {
+			ep.Tunnel.Host = strings.TrimSpace(ep.Tunnel.Host)
+			ep.Tunnel.User = strings.TrimSpace(ep.Tunnel.User)
+			ep.Tunnel.KeyFile = strings.TrimSpace(ep.Tunnel.KeyFile)
+			if ep.Tunnel.Host == "" {
+				ep.Tunnel = nil
+			} else {
+				if ep.Tunnel.Port == 0 {
+					ep.Tunnel.Port = 22
+				}
+				if ep.Tunnel.LocalForwarderType == "" {
+					ep.Tunnel.LocalForwarderType = "tcp"
+				}
+				if len(ep.Tunnel.JumpHosts) > 0 {
+					trimmed := make([]string, 0, len(ep.Tunnel.JumpHosts))
+					for _, jump := range ep.Tunnel.JumpHosts {
+						jump = strings.TrimSpace(jump)
+						if jump != "" {
+							trimmed = append(trimmed, jump)
+						}
+					}
+					ep.Tunnel.JumpHosts = trimmed
+				}
+			}
+		}
+		cleaned = append(cleaned, ep)
+	}
+	return cleaned
+}
+
+func tunnelConfigToConnectionConfig(t *TunnelConfig) ovsdb.ConnectionConfig {
+	if t == nil {
+		return ovsdb.ConnectionConfig{}
+	}
+	cfg := ovsdb.ConnectionConfig{
+		Host:               t.Host,
+		Port:               t.Port,
+		User:               t.User,
+		KeyFile:            t.KeyFile,
+		JumpHosts:          append([]string{}, t.JumpHosts...),
+		LocalForwarderType: t.LocalForwarderType,
+	}
+	if cfg.Port == 0 {
+		cfg.Port = 22
+	}
+	return cfg
+}
+
+func cloneEndpoints(endpoints []EndpointConfig) []EndpointConfig {
+	clones := make([]EndpointConfig, len(endpoints))
+	for i, ep := range endpoints {
+		clones[i].Endpoint = ep.Endpoint
+		if ep.Tunnel != nil {
+			tunnelCopy := *ep.Tunnel
+			if len(ep.Tunnel.JumpHosts) > 0 {
+				tunnelCopy.JumpHosts = append([]string{}, ep.Tunnel.JumpHosts...)
+			}
+			clones[i].Tunnel = &tunnelCopy
+		}
+	}
+	return clones
+}
+
+func historySignature(endpoints []EndpointConfig) string {
+	if len(endpoints) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(endpoints)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func upgradeHistoryRecord(record ConnectionHistory) (ConnectionHistory, bool) {
+	changed := false
+	if len(record.Endpoints) == 0 && record.Endpoint != "" {
+		upgraded := EndpointConfig{Endpoint: record.Endpoint}
+		if record.Host != "" {
+			tunnel := &TunnelConfig{
+				Host:               record.Host,
+				Port:               record.Port,
+				User:               record.User,
+				KeyFile:            record.KeyFile,
+				JumpHosts:          append([]string{}, record.JumpHosts...),
+				LocalForwarderType: record.LocalForwarderType,
+			}
+			if tunnel.Port == 0 {
+				tunnel.Port = 22
+			}
+			if tunnel.LocalForwarderType == "" {
+				tunnel.LocalForwarderType = "tcp"
+			}
+			upgraded.Tunnel = tunnel
+		}
+		record.Endpoints = []EndpointConfig{upgraded}
+		changed = true
+	}
+	if record.Version != historyVersion {
+		record.Version = historyVersion
+		changed = true
+	}
+	if changed {
+		record.Host = ""
+		record.Port = 0
+		record.User = ""
+		record.KeyFile = ""
+		record.Endpoint = ""
+		record.JumpHosts = nil
+		record.LocalForwarderType = ""
+	}
+	return record, changed
 }
 
 // DeleteHistory removes a connection from history by index

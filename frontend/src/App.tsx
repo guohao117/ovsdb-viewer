@@ -9,6 +9,9 @@ import {
   theme,
   Form,
   Input,
+  Switch,
+  Card,
+  Divider,
   Select,
   List,
   Space,
@@ -31,34 +34,184 @@ import {
   GetSchema,
   GetTable,
 } from "../wailsjs/go/main/App";
-import { ovsdb } from "../wailsjs/go/models";
+import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { main, ovsdb } from "../wailsjs/go/models";
 
-interface ConnectionHistory {
-  id: string;
+const HISTORY_VERSION = 2;
+
+interface TunnelFormValues {
   host: string;
   port: number;
   user: string;
   keyFile: string;
-  endpoint: string;
   jumpHosts: string;
   localForwarderType: string;
+}
+
+interface EndpointFormValues {
+  endpoint: string;
+  tunnelEnabled: boolean;
+  tunnel: TunnelFormValues;
+}
+
+interface HistoryTunnel {
+  host: string;
+  port: number;
+  user: string;
+  keyFile: string;
+  jumpHosts: string[];
+  localForwarderType: string;
+}
+
+interface HistoryEndpoint {
+  endpoint: string;
+  tunnel?: HistoryTunnel | null;
+}
+
+interface ConnectionHistoryRecord {
+  backendIndex: number;
+  id: string;
+  endpoints: HistoryEndpoint[];
   timestamp: number;
+}
+
+interface ConnectFormValues {
+  endpoints: EndpointFormValues[];
+}
+
+interface EndpointConfigPayload {
+  endpoint: string;
+  tunnel?: HistoryTunnel;
+}
+
+const DEFAULT_LOCAL_FORWARDER = "tcp";
+const DEFAULT_SSH_PORT = 22;
+
+const createEmptyEndpoint = (): EndpointFormValues => ({
+  endpoint: "",
+  tunnelEnabled: false,
+  tunnel: {
+    host: "",
+    port: DEFAULT_SSH_PORT,
+    user: "",
+    keyFile: "",
+    jumpHosts: "",
+    localForwarderType: DEFAULT_LOCAL_FORWARDER,
+  },
+});
+
+function upgradeHistoryRecord(
+  record: main.ConnectionHistory,
+): main.ConnectionHistory {
+  if (!record) {
+    return record;
+  }
+
+  const baseData = {
+    version: record.version,
+    timestamp: record.timestamp,
+    endpoints: (record.endpoints || []).map((endpoint) => ({
+      endpoint: endpoint.endpoint || "",
+      tunnel: endpoint.tunnel
+        ? {
+            host: endpoint.tunnel.host || "",
+            port: endpoint.tunnel.port || DEFAULT_SSH_PORT,
+            user: endpoint.tunnel.user || "",
+            keyFile: endpoint.tunnel.keyFile || "",
+            jumpHosts: endpoint.tunnel.jumpHosts
+              ? [...endpoint.tunnel.jumpHosts]
+              : [],
+            localForwarderType:
+              endpoint.tunnel.localForwarderType || DEFAULT_LOCAL_FORWARDER,
+          }
+        : undefined,
+    })),
+    host: record.host,
+    port: record.port,
+    user: record.user,
+    keyFile: record.keyFile,
+    endpoint: record.endpoint,
+    jumpHosts: record.jumpHosts ? [...record.jumpHosts] : undefined,
+    localForwarderType: record.localForwarderType,
+  };
+
+  const hasEndpoints = baseData.endpoints.length > 0;
+
+  if (!hasEndpoints && record.endpoint) {
+    const tunnel = record.host
+      ? {
+          host: record.host,
+          port: record.port || DEFAULT_SSH_PORT,
+          user: record.user || "",
+          keyFile: record.keyFile || "",
+          jumpHosts: record.jumpHosts ? [...record.jumpHosts] : [],
+          localForwarderType: record.localForwarderType || DEFAULT_LOCAL_FORWARDER,
+        }
+      : undefined;
+    baseData.endpoints = [
+      {
+        endpoint: record.endpoint,
+        tunnel,
+      },
+    ];
+  }
+
+  if (!baseData.version || baseData.version !== HISTORY_VERSION) {
+    baseData.version = HISTORY_VERSION;
+  }
+
+  if (baseData.endpoints.length > 0) {
+    baseData.host = "";
+    baseData.port = 0;
+    baseData.user = "";
+    baseData.keyFile = "";
+    baseData.endpoint = "";
+    baseData.jumpHosts = [];
+    baseData.localForwarderType = "";
+  }
+
+  return main.ConnectionHistory.createFrom(baseData);
+}
+
+function mapHistoryRecord(
+  record: main.ConnectionHistory,
+  index: number,
+): ConnectionHistoryRecord {
+  const upgraded = upgradeHistoryRecord(record);
+  const endpoints: HistoryEndpoint[] = (upgraded.endpoints || []).map((endpoint) => ({
+    endpoint: endpoint.endpoint || "",
+    tunnel: endpoint.tunnel
+      ? {
+          host: endpoint.tunnel.host || "",
+          port: endpoint.tunnel.port || DEFAULT_SSH_PORT,
+          user: endpoint.tunnel.user || "",
+          keyFile: endpoint.tunnel.keyFile || "",
+          jumpHosts: endpoint.tunnel.jumpHosts
+            ? [...endpoint.tunnel.jumpHosts]
+            : [],
+          localForwarderType:
+            endpoint.tunnel.localForwarderType || DEFAULT_LOCAL_FORWARDER,
+        }
+      : undefined,
+  }));
+
+  const signature = endpoints.map((ep) => ep.endpoint).join("|") || "endpoint";
+
+  return {
+    backendIndex: index,
+    id: `${signature}:${upgraded.timestamp || 0}:${index}`,
+    endpoints,
+    timestamp: (upgraded.timestamp || 0) * 1000,
+  };
 }
 
 function App() {
   const [form] = Form.useForm();
 
   // OVSDB connection states
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState(22);
-  const [user, setUser] = useState("");
-  const [keyFile, setKeyFile] = useState("");
-  const [endpoint, setEndpoint] = useState("");
-  const [jumpHosts, setJumpHosts] = useState("");
-  const [localForwarderType, setLocalForwarderType] = useState("tcp");
   const [connected, setConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("");
-  const [history, setHistory] = useState<ConnectionHistory[]>([]);
+  const [history, setHistory] = useState<ConnectionHistoryRecord[]>([]);
 
   // UI states
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -82,25 +235,58 @@ function App() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [drawerTitle, setDrawerTitle] = useState<string | null>(null);
   const [drawerContent, setDrawerContent] = useState<any | null>(null);
+  const endpointsWatch = Form.useWatch("endpoints", form) as
+    | EndpointFormValues[]
+    | undefined;
   // NOTE: 'selectedTables' state removed. Use Sider to open/close tables and
   // keep a single source of truth in `monitoredTables`.
 
-  async function connectOVSDB() {
+  async function handleConnect(values: ConnectFormValues) {
     try {
       setConnectionStatus("Connecting...");
-      const jumpHostsArray = jumpHosts
-        .split(",")
-        .map((h) => h.trim())
-        .filter((h) => h);
-      await ConnectOVSDB(
-        host,
-        user,
-        keyFile,
-        endpoint,
-        port,
-        jumpHostsArray,
-        localForwarderType,
-      );
+      const sanitizedEndpoints = (values.endpoints || [])
+        .map((endpointConfig) => {
+          const trimmedEndpoint = endpointConfig.endpoint.trim();
+          if (!trimmedEndpoint) {
+            return null;
+          }
+          const payload: EndpointConfigPayload = {
+            endpoint: trimmedEndpoint,
+          };
+          if (endpointConfig.tunnelEnabled) {
+            const tunnelHost = endpointConfig.tunnel.host.trim();
+            if (!tunnelHost) {
+              throw new Error("Tunnel host is required when tunnel is enabled.");
+            }
+            const jumpHostsArray = endpointConfig.tunnel.jumpHosts
+              .split(",")
+              .map((value) => value.trim())
+              .filter(Boolean);
+            payload.tunnel = {
+              host: tunnelHost,
+              port: endpointConfig.tunnel.port || DEFAULT_SSH_PORT,
+              user: endpointConfig.tunnel.user.trim(),
+              keyFile: endpointConfig.tunnel.keyFile.trim(),
+              jumpHosts: jumpHostsArray,
+              localForwarderType:
+                endpointConfig.tunnel.localForwarderType ||
+                DEFAULT_LOCAL_FORWARDER,
+            };
+          }
+          return payload;
+        })
+        .filter((endpoint): endpoint is EndpointConfigPayload => !!endpoint);
+
+      if (sanitizedEndpoints.length === 0) {
+        setConnectionStatus("Please configure at least one valid endpoint.");
+        return;
+      }
+
+      const requestPayload = {
+        endpoints: sanitizedEndpoints,
+      };
+      const request = main.ConnectRequest.createFrom(requestPayload);
+      await ConnectOVSDB(request);
       setConnected(true);
       setConnectionStatus("Connected successfully!");
       setShowConnectModal(false);
@@ -113,7 +299,8 @@ function App() {
         loadDataForTable(selectedTable);
       }
     } catch (error) {
-      setConnectionStatus(`Connection failed: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      setConnectionStatus(`Connection failed: ${message}`);
     }
   }
 
@@ -359,45 +546,35 @@ function App() {
   async function loadHistory() {
     try {
       const hist = await GetHistory();
-      console.log("Loaded history from backend:", hist);
-      const mappedHistory = hist.map((h: any) => {
-        console.log("History item:", h);
-        return {
-          id: `${h.host}:${h.port}:${h.user}:${h.endpoint}:${h.timestamp}`,
-          host: h.host,
-          port: h.port,
-          user: h.user,
-          keyFile: h.keyFile,
-          endpoint: h.endpoint,
-          jumpHosts: (h.jumpHosts || []).join(", "),
-          localForwarderType: h.localForwarderType,
-          timestamp: h.timestamp * 1000, // Convert to milliseconds
-        };
-      });
-      console.log("Mapped history:", mappedHistory);
+      const mappedHistory = hist.map((record, index) =>
+        mapHistoryRecord(record, index),
+      );
       setHistory(mappedHistory);
     } catch (error) {
       console.error("Failed to load history:", error);
     }
   }
 
-  function loadConnection(conn: ConnectionHistory) {
-    setHost(conn.host);
-    setPort(conn.port);
-    setUser(conn.user);
-    setKeyFile(conn.keyFile);
-    setEndpoint(conn.endpoint);
-    setJumpHosts(conn.jumpHosts);
-    setLocalForwarderType(conn.localForwarderType);
-    form.setFieldsValue({
-      host: conn.host,
-      port: conn.port,
-      user: conn.user,
-      keyFile: conn.keyFile,
-      endpoint: conn.endpoint,
-      jumpHosts: conn.jumpHosts,
-      localForwarderType: conn.localForwarderType,
-    });
+  function loadConnection(conn: ConnectionHistoryRecord) {
+    const endpoints =
+      conn.endpoints.length > 0
+        ? conn.endpoints.map((endpoint) => ({
+            endpoint: endpoint.endpoint,
+            tunnelEnabled: Boolean(endpoint.tunnel),
+            tunnel: {
+              host: endpoint.tunnel?.host || "",
+              port: endpoint.tunnel?.port || DEFAULT_SSH_PORT,
+              user: endpoint.tunnel?.user || "",
+              keyFile: endpoint.tunnel?.keyFile || "",
+              jumpHosts: (endpoint.tunnel?.jumpHosts || []).join(", "),
+              localForwarderType:
+                endpoint.tunnel?.localForwarderType || DEFAULT_LOCAL_FORWARDER,
+            },
+          }))
+        : [createEmptyEndpoint()];
+    form.setFieldsValue({ endpoints });
+    setShowConnectModal(true);
+    setConnectionStatus("Loaded connection from history");
   }
 
   async function deleteConnection(index: number) {
@@ -590,91 +767,169 @@ function App() {
           open={showConnectModal}
           onCancel={() => setShowConnectModal(false)}
           footer={null}
-          width={600}
+          width={700}
         >
           <Form
             form={form}
             layout="vertical"
-            onFinish={() => connectOVSDB()}
+            onFinish={handleConnect}
             initialValues={{
-              host,
-              port,
-              user,
-              keyFile,
-              endpoint,
-              jumpHosts,
-              localForwarderType,
+              endpoints: [createEmptyEndpoint()],
             }}
           >
-            <Form.Item label="Host" name="host">
-              <Input placeholder="e.g., 192.168.1.100" />
-            </Form.Item>
-            <Form.Item label="Port" name="port">
-              <Input type="number" />
-            </Form.Item>
-            <Form.Item label="User" name="user">
-              <Input placeholder="e.g., root" />
-            </Form.Item>
-            <Form.Item label="Key File" name="keyFile">
-              <Input placeholder="e.g., /home/user/.ssh/id_rsa" />
-            </Form.Item>
-            <Form.Item label="Endpoint" name="endpoint">
-              <Input placeholder="e.g., tcp:127.0.0.1:6640 or unix:/var/run/ovsdb.sock" />
-            </Form.Item>
-            <Form.Item label="Jump Hosts (comma-separated)" name="jumpHosts">
-              <Input placeholder="e.g., user@jump1:22, user@jump2:22" />
-            </Form.Item>
-            <Form.Item label="Local Forwarder Type" name="localForwarderType">
-              <Select>
-                <Select.Option value="tcp">TCP</Select.Option>
-                <Select.Option value="unix">Unix</Select.Option>
-                <Select.Option value="auto">Auto</Select.Option>
-              </Select>
-            </Form.Item>
-
+            <Form.List name="endpoints">
+              {(fields, { add, remove }) => (
+                <Space direction="vertical" style={{ width: "100%" }} size="large">
+                  {fields.map((field, index) => {
+                    const endpointValues = endpointsWatch?.[field.name as number];
+                    const tunnelEnabled = endpointValues?.tunnelEnabled;
+                    return (
+                      <Card key={field.key} size="small" className="endpoint-card">
+                        <div className="endpoint-card__header">
+                          <span>Endpoint {index + 1}</span>
+                          {fields.length > 1 && (
+                            <Button
+                              type="text"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => remove(field.name)}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                        <Form.Item
+                          label="Endpoint"
+                          name={[field.name, "endpoint"]}
+                          rules={[{ required: true, message: "Please enter an endpoint" }]}
+                        >
+                          <Input placeholder="e.g., tcp:127.0.0.1:6640 or unix:/var/run/ovsdb.sock" />
+                        </Form.Item>
+                        <Form.Item
+                          label="Enable Tunnel"
+                          name={[field.name, "tunnelEnabled"]}
+                          valuePropName="checked"
+                        >
+                          <Switch />
+                        </Form.Item>
+                        {tunnelEnabled && (
+                          <div className="tunnel-section">
+                            <Form.Item
+                              label="SSH Host"
+                              name={[field.name, "tunnel", "host"]}
+                              rules={[
+                                {
+                                  required: true,
+                                  message: "SSH host is required when tunnel is enabled",
+                                },
+                              ]}
+                            >
+                              <Input placeholder="e.g., bastion.example.com" />
+                            </Form.Item>
+                            <Form.Item
+                              label="SSH Port"
+                              name={[field.name, "tunnel", "port"]}
+                            >
+                              <Input type="number" min={1} />
+                            </Form.Item>
+                            <Form.Item
+                              label="SSH User"
+                              name={[field.name, "tunnel", "user"]}
+                            >
+                              <Input placeholder="e.g., root" />
+                            </Form.Item>
+                            <Form.Item
+                              label="SSH Key File"
+                              name={[field.name, "tunnel", "keyFile"]}
+                            >
+                              <Input placeholder="e.g., ~/.ssh/id_rsa" />
+                            </Form.Item>
+                            <Form.Item
+                              label="Jump Hosts (comma-separated)"
+                              name={[field.name, "tunnel", "jumpHosts"]}
+                            >
+                              <Input placeholder="e.g., user@jump1:22, user@jump2:22" />
+                            </Form.Item>
+                            <Form.Item
+                              label="Local Forwarder Type"
+                              name={[field.name, "tunnel", "localForwarderType"]}
+                            >
+                              <Select>
+                                <Select.Option value="tcp">TCP</Select.Option>
+                                <Select.Option value="unix">Unix</Select.Option>
+                                <Select.Option value="auto">Auto</Select.Option>
+                              </Select>
+                            </Form.Item>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                  <Button
+                    type="dashed"
+                    onClick={() => add(createEmptyEndpoint())}
+                    block
+                    icon={<PlusOutlined />}
+                  >
+                    Add Endpoint
+                  </Button>
+                </Space>
+              )}
+            </Form.List>
+            <Divider />
             <Form.Item>
               <Space>
                 <Button type="primary" htmlType="submit">
                   Connect
                 </Button>
-                <Button onClick={() => setShowConnectModal(false)}>
-                  Cancel
-                </Button>
+                <Button onClick={() => setShowConnectModal(false)}>Cancel</Button>
               </Space>
             </Form.Item>
           </Form>
-          <div>Status: {connectionStatus}</div>
-          <div>
-            <h3>Connection History</h3>
-            {history.length === 0 ? (
-              <p>No connection history yet.</p>
-            ) : (
-              <List
-                dataSource={history}
-                renderItem={(conn, index) => (
-                  <List.Item
-                    actions={[
-                      <Button size="small" onClick={() => loadConnection(conn)}>
-                        Load
-                      </Button>,
-                      <Button
-                        size="small"
-                        danger
-                        onClick={() => deleteConnection(index)}
-                      >
-                        Delete
-                      </Button>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      title={`${conn.host}:${conn.port} - ${conn.user} - ${conn.endpoint}`}
-                      description={new Date(conn.timestamp).toLocaleString()}
-                    />
-                  </List.Item>
-                )}
-              />
-            )}
-          </div>
+          <div className="connection-status">Status: {connectionStatus}</div>
+          <Divider orientation="left">Connection History</Divider>
+          {history.length === 0 ? (
+            <p>No connection history yet.</p>
+          ) : (
+            <List
+              dataSource={history}
+              rowKey={(item) => item.id}
+              renderItem={(conn) => (
+                <List.Item
+                  key={conn.id}
+                  actions={[
+                    <Button size="small" onClick={() => loadConnection(conn)}>
+                      Load
+                    </Button>,
+                    <Button
+                      size="small"
+                      danger
+                      onClick={() => deleteConnection(conn.backendIndex)}
+                    >
+                      Delete
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={conn.endpoints.map((ep) => ep.endpoint).join(", ") || "(empty)"}
+                    description={
+                      <div>
+                        <div>{new Date(conn.timestamp).toLocaleString()}</div>
+                        {conn.endpoints.map((ep, idx) => (
+                          <div key={`${conn.id}-${idx}`}>
+                            {ep.endpoint}
+                            {ep.tunnel
+                              ? ` via ${ep.tunnel.user ? `${ep.tunnel.user}@` : ""}${ep.tunnel.host}:${ep.tunnel.port}`
+                              : " (direct)"}
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          )}
         </Modal>
       </Layout>
     </ConfigProvider>
