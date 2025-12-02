@@ -3,60 +3,54 @@ package ovsdb
 import (
 	"context"
 	"fmt"
-	"log"
-	"reflect"
-
-	vswitch "ovsdb-viewer/internal/ovsdb/model/vswitch"
 
 	ovsdbclient "github.com/ovn-kubernetes/libovsdb/client"
-	ovsdbmodel "github.com/ovn-kubernetes/libovsdb/model"
-	ovsdbovsdb "github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb/serverdb"
 )
 
-// OVSDBClient wraps the libovsdb client with SSH tunneling support
+// OVSDBClient handles dynamic OVSDB interactions without generated models
 type OVSDBClient struct {
-	client  ovsdbclient.Client
-	dbModel ovsdbmodel.DatabaseModel
-	tunnel  *Tunnel
+	client        ovsdbclient.Client
+	tunnel        *Tunnel
+	localEndpoint string
 }
 
-// Connect establishes a connection to the OVSDB server, optionally through an SSH tunnel
-func (c *OVSDBClient) Connect(ctx context.Context, config ConnectionConfig, endpoint string) error {
+// Connect connects to OVSDB without a specific schema model
+func (c *OVSDBClient) Connect(ctx context.Context, config ConnectionConfig, endpoint string, dbName string) error {
 	var localEndpoint string
 	var tunnel *Tunnel
 	var err error
 
 	if config.Host != "" {
-		// Use SSH tunnel
 		tunnel, err = EstablishTunnel(config, endpoint)
 		if err != nil {
 			return fmt.Errorf("failed to establish tunnel: %w", err)
 		}
 		localEndpoint = tunnel.LocalEndpoint
 	} else {
-		// Direct connection
 		localEndpoint = endpoint
 	}
 
-	// Create OVSDB client
-	schema := vswitch.Schema()
-	clientModel, err := vswitch.FullDatabaseModel()
+	if dbName == "" {
+		dbName = "Open_vSwitch"
+	}
+
+	// We use a dummy model because libovsdb requires one to initialize.
+	// However, we won't use the cache or monitor features that rely on it.
+	// We'll use raw Transact/RPC calls.
+	dummyModel, err := model.NewClientDBModel(dbName, nil)
 	if err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
 		}
-		return fmt.Errorf("failed to create DB model: %w", err)
+		return fmt.Errorf("failed to create dummy model: %w", err)
 	}
-	dbModel, verr := ovsdbmodel.NewDatabaseModel(schema, clientModel)
-	if verr != nil {
-		if tunnel != nil {
-			tunnel.Stop()
-		}
-		return fmt.Errorf("failed to create database model: %v", verr)
-	}
-	c.dbModel = dbModel
-	log.Printf("Connecting to database: %s", clientModel.Name())
-	ovsdbClient, err := ovsdbclient.NewOVSDBClient(clientModel, ovsdbclient.WithEndpoint(localEndpoint))
+
+	// Create OVSDB client
+	// We don't call MonitorAll here because we don't have a model to map to.
+	ovsdbClient, err := ovsdbclient.NewOVSDBClient(dummyModel, ovsdbclient.WithEndpoint(localEndpoint))
 	if err != nil {
 		if tunnel != nil {
 			tunnel.Stop()
@@ -72,91 +66,130 @@ func (c *OVSDBClient) Connect(ctx context.Context, config ConnectionConfig, endp
 		return fmt.Errorf("failed to connect to OVSDB: %w", err)
 	}
 
-	// Start monitoring all tables to populate the cache
-	_, err = ovsdbClient.MonitorAll(ctx)
-	if err != nil {
-		if tunnel != nil {
-			tunnel.Stop()
-		}
-		return fmt.Errorf("failed to start monitoring: %w", err)
-	}
-
 	c.client = ovsdbClient
 	c.tunnel = tunnel
+	c.localEndpoint = localEndpoint
 	return nil
 }
 
-// Disconnect closes the OVSDB connection and stops the tunnel if active
-func (c *OVSDBClient) Disconnect() error {
+// Disconnect closes the connection
+func (c *OVSDBClient) Disconnect() {
 	if c.client != nil {
 		c.client.Disconnect()
 	}
 	if c.tunnel != nil {
 		c.tunnel.Stop()
 	}
-	return nil
 }
 
-// GetClient returns the underlying libovsdb client for direct operations
-func (c *OVSDBClient) GetClient() ovsdbclient.Client {
-	return c.client
-}
-
-func (c *OVSDBClient) GetSchema() *ovsdbovsdb.DatabaseSchema {
-	return &c.dbModel.Schema
-}
-
-func (c *OVSDBClient) GetTable(ctx context.Context, table string) ([]map[string]any, error) {
-	modelType, ok := c.dbModel.Client().Types()[table]
-	if !ok {
-		return nil, fmt.Errorf("table %s not found in database model", table)
+// ListDatabases returns a list of available database names
+func (c *OVSDBClient) ListDatabases(ctx context.Context) ([]string, error) {
+	if c.localEndpoint == "" {
+		return nil, fmt.Errorf("not connected")
 	}
 
-	sliceType := reflect.SliceOf(modelType)
-	sliceValue := reflect.New(sliceType).Interface()
-	err := c.client.List(ctx, sliceValue)
+	// Connect to _Server database to list databases
+	serverModel, err := serverdb.FullDatabaseModel()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list table %s: %w", table, err)
+		return nil, fmt.Errorf("failed to create server model: %w", err)
 	}
 
-	result := []map[string]any{}
-	slice := reflect.ValueOf(sliceValue).Elem()
-	for i := 0; i < slice.Len(); i++ {
-		model := slice.Index(i).Interface()
-		rowMap := structToMap(model)
-		result = append(result, rowMap)
+	serverClient, err := ovsdbclient.NewOVSDBClient(serverModel, ovsdbclient.WithEndpoint(c.localEndpoint))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create server client: %w", err)
 	}
 
-	return result, nil
+	if err := serverClient.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("failed to connect to server db: %w", err)
+	}
+	defer serverClient.Disconnect()
+
+	var dbs []serverdb.Database
+	if err := serverClient.List(ctx, &dbs); err != nil {
+		return nil, fmt.Errorf("failed to list databases: %w", err)
+	}
+
+	names := make([]string, 0, len(dbs))
+	for _, db := range dbs {
+		names = append(names, db.Name)
+	}
+	return names, nil
 }
 
-func structToMap(model any) map[string]any {
-	result := make(map[string]any)
-	val := reflect.ValueOf(model)
+// GetSchema returns the schema for a specific database
+func (c *OVSDBClient) GetSchema(ctx context.Context, dbName string) (*ovsdb.DatabaseSchema, error) {
+	schema := c.client.Schema()
+	return &schema, nil
+}
 
-	// Handle pointer types safely
-	for val.Kind() == reflect.Ptr {
-		if val.IsNil() {
-			return result
+// GetTableData fetches all rows from a table using a raw Select operation
+func (c *OVSDBClient) GetTableData(ctx context.Context, tableName string) ([]map[string]interface{}, error) {
+	// Construct a Select operation
+	op := ovsdb.Operation{
+		Op:    "select",
+		Table: tableName,
+		Where: []ovsdb.Condition{}, // Select all
+	}
+
+	// Execute transaction
+	results, err := c.client.Transact(ctx, op)
+	if err != nil {
+		return nil, fmt.Errorf("transaction failed: %w", err)
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no results returned")
+	}
+
+	if results[0].Error != "" {
+		return nil, fmt.Errorf("server error: %s - %s", results[0].Error, results[0].Details)
+	}
+
+	// Convert rows to generic maps
+	rows := make([]map[string]interface{}, 0, len(results[0].Rows))
+	for _, row := range results[0].Rows {
+		rows = append(rows, normalizeRow(row))
+	}
+
+	return rows, nil
+}
+
+func normalizeRow(row ovsdb.Row) map[string]interface{} {
+	out := make(map[string]interface{})
+	for k, v := range row {
+		out[k] = normalizeValue(v)
+	}
+	return out
+}
+
+func normalizeValue(val interface{}) interface{} {
+	switch v := val.(type) {
+	case ovsdb.OvsSet:
+		return v.GoSet
+	case *ovsdb.OvsSet:
+		return v.GoSet
+	case ovsdb.OvsMap:
+		// Convert to map[string]interface{} for JSON compatibility
+		out := make(map[string]interface{})
+		for k, val := range v.GoMap {
+			out[fmt.Sprintf("%v", k)] = val
 		}
-		val = val.Elem()
-	}
-
-	// Ensure we have a struct
-	if val.Kind() != reflect.Struct {
-		return result
-	}
-
-	typ := val.Type()
-
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		fieldValue := val.Field(i).Interface()
-		ovsdbTag := field.Tag.Get("ovsdb")
-		if ovsdbTag != "" {
-			result[ovsdbTag] = fieldValue
+		return out
+	case *ovsdb.OvsMap:
+		out := make(map[string]interface{})
+		for k, val := range v.GoMap {
+			out[fmt.Sprintf("%v", k)] = val
 		}
+		return out
+	case ovsdb.UUID:
+		return v.GoUUID
+	case []interface{}:
+		newSlice := make([]interface{}, len(v))
+		for i, elem := range v {
+			newSlice[i] = normalizeValue(elem)
+		}
+		return newSlice
+	default:
+		return v
 	}
-
-	return result
 }

@@ -28,11 +28,15 @@ import {
 } from "react-icons/vsc";
 import {
   ConnectOVSDB,
+  ConnectDynamic,
   DisconnectOVSDB,
   GetHistory,
   DeleteHistory,
   GetSchema,
+  GetSchemaDynamic,
   GetTable,
+  GetTableDynamic,
+  ListDatabases,
 } from "../wailsjs/go/main/App";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { main, ovsdb } from "../wailsjs/go/models";
@@ -212,6 +216,8 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("");
   const [history, setHistory] = useState<ConnectionHistoryRecord[]>([]);
+  const [currentDb, setCurrentDb] = useState("Open_vSwitch");
+  const [dbList, setDbList] = useState<string[]>([]);
 
   // UI states
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -286,13 +292,22 @@ function App() {
         endpoints: sanitizedEndpoints,
       };
       const request = main.ConnectRequest.createFrom(requestPayload);
-      await ConnectOVSDB(request);
+      await ConnectDynamic(request, currentDb);
       setConnected(true);
       setConnectionStatus("Connected successfully!");
       setShowConnectModal(false);
       loadHistory(); // Reload history after successful connection
+
+      // Fetch available DBs
+      try {
+        const dbs = await ListDatabases();
+        setDbList(dbs);
+      } catch (e) {
+        console.error("Failed to list databases", e);
+      }
+
       // Load schema
-      const dbSchema = await GetSchema();
+      const dbSchema = await GetSchemaDynamic(currentDb);
       setSchema(dbSchema);
       // If a table is already selected, load just that one (useEffect also covers this)
       if (selectedTable) {
@@ -327,7 +342,7 @@ function App() {
       }
       setDataStatus(`Loading ${tableName}...`);
       console.log("loadDataForTable: tableName =", tableName);
-      const res = await GetTable(tableName);
+      const res = await GetTableDynamic(currentDb, tableName);
       setTableData((prev) => ({ ...prev, [tableName]: res }));
       setDataStatus("Data loaded successfully");
     } catch (error) {

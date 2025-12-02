@@ -37,13 +37,18 @@ func (a *App) startup(ctx context.Context) {
 
 // ConnectOVSDB connects to the OVSDB server using the provided configuration
 func (a *App) ConnectOVSDB(req ConnectRequest) error {
+	return a.ConnectDynamic(req, "Open_vSwitch")
+}
+
+// ConnectDynamic connects to the OVSDB server using the dynamic client
+func (a *App) ConnectDynamic(req ConnectRequest, dbName string) error {
 	endpoints := normalizeEndpoints(req.Endpoints)
 	if len(endpoints) == 0 {
 		return fmt.Errorf("no endpoints provided")
 	}
 
 	if a.ovsdbClient != nil {
-		_ = a.ovsdbClient.Disconnect()
+		a.ovsdbClient.Disconnect()
 		a.ovsdbClient = nil
 	}
 
@@ -54,7 +59,7 @@ func (a *App) ConnectOVSDB(req ConnectRequest) error {
 		if ep.Tunnel != nil {
 			cfg = tunnelConfigToConnectionConfig(ep.Tunnel)
 		}
-		err := client.Connect(a.ctx, cfg, ep.Endpoint)
+		err := client.Connect(a.ctx, cfg, ep.Endpoint, dbName)
 		if err == nil {
 			a.ovsdbClient = client
 			a.AddToHistory(ConnectionHistory{
@@ -77,7 +82,7 @@ func (a *App) ConnectOVSDB(req ConnectRequest) error {
 // DisconnectOVSDB disconnects from the OVSDB server
 func (a *App) DisconnectOVSDB() error {
 	if a.ovsdbClient != nil {
-		return a.ovsdbClient.Disconnect()
+		a.ovsdbClient.Disconnect()
 	}
 	return nil
 }
@@ -331,7 +336,13 @@ func (a *App) GetOVSDBClient() *ovsdb.OVSDBClient {
 
 // GetSchema returns the OVSDB schema
 func (a *App) GetSchema() (*ovsdbovsdb.DatabaseSchema, error) {
-	return a.ovsdbClient.GetSchema(), nil
+	if a.ovsdbClient == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	// Default to Open_vSwitch for legacy compatibility if needed,
+	// but GetSchema on client now takes dbName.
+	// However, the client implementation of GetSchema ignores dbName and returns schema of connected client.
+	return a.ovsdbClient.GetSchema(a.ctx, "")
 }
 
 // GetTable retrieves all rows from the specified table as a slice of maps
@@ -339,5 +350,31 @@ func (a *App) GetTable(table string) ([]map[string]any, error) {
 	if a.ovsdbClient == nil {
 		return nil, fmt.Errorf("not connected")
 	}
-	return a.ovsdbClient.GetTable(a.ctx, table)
+	return a.ovsdbClient.GetTableData(a.ctx, table)
+}
+
+// ListDatabases returns a list of available database names
+func (a *App) ListDatabases() ([]string, error) {
+	if a.ovsdbClient == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	return a.ovsdbClient.ListDatabases(a.ctx)
+}
+
+// GetSchemaDynamic returns the OVSDB schema for a specific database
+func (a *App) GetSchemaDynamic(dbName string) (*ovsdbovsdb.DatabaseSchema, error) {
+	if a.ovsdbClient == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	return a.ovsdbClient.GetSchema(a.ctx, dbName)
+}
+
+// GetTableDynamic retrieves all rows from the specified table using the dynamic client
+func (a *App) GetTableDynamic(dbName string, tableName string) ([]map[string]any, error) {
+	if a.ovsdbClient == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	// Note: dbName is currently ignored by the client as it uses the connected DB,
+	// but we keep it in the signature for future flexibility or validation.
+	return a.ovsdbClient.GetTableData(a.ctx, tableName)
 }
