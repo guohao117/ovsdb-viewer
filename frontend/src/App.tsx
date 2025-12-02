@@ -218,6 +218,7 @@ function App() {
   const [history, setHistory] = useState<ConnectionHistoryRecord[]>([]);
   const [currentDb, setCurrentDb] = useState("Open_vSwitch");
   const [dbList, setDbList] = useState<string[]>([]);
+  const [currentConnectionRequest, setCurrentConnectionRequest] = useState<any>(null);
 
   // UI states
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -292,6 +293,10 @@ function App() {
         endpoints: sanitizedEndpoints,
       };
       const request = main.ConnectRequest.createFrom(requestPayload);
+      
+      // Save connection request for switching databases later
+      setCurrentConnectionRequest(request);
+
       await ConnectDynamic(request, currentDb);
       setConnected(true);
       setConnectionStatus("Connected successfully!");
@@ -316,6 +321,35 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setConnectionStatus(`Connection failed: ${message}`);
+    }
+  }
+
+  async function switchDatabase(dbName: string) {
+    if (!currentConnectionRequest) return;
+    if (dbName === currentDb && connected) return;
+
+    try {
+      setConnectionStatus(`Switching to ${dbName}...`);
+      // Disconnect first? ConnectDynamic handles it, but good to be clean.
+      // Actually ConnectDynamic in backend handles disconnect.
+      
+      await ConnectDynamic(currentConnectionRequest, dbName);
+      setCurrentDb(dbName);
+      setConnected(true);
+      setConnectionStatus(`Connected to ${dbName}`);
+      
+      // Clear previous DB state
+      setMonitoredTables([]);
+      setSelectedTable(null);
+      setTableData({});
+      
+      // Load new schema
+      const dbSchema = await GetSchemaDynamic(dbName);
+      setSchema(dbSchema);
+      
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setConnectionStatus(`Failed to switch to ${dbName}: ${message}`);
     }
   }
 
@@ -634,6 +668,47 @@ function App() {
 
   const dataMap = tableData;
 
+  // Construct tree data from dbList
+  // If dbList is empty but we are connected (e.g. legacy or list failed), show currentDb
+  const effectiveDbList = dbList.length > 0 ? dbList : (connected ? [currentDb] : []);
+  
+  const treeData = effectiveDbList.map(dbName => {
+    const isCurrent = dbName === currentDb;
+    return {
+      title: (
+        <span>
+          {dbName}
+          {isCurrent && (
+            <span
+              style={{
+                display: "inline-block",
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                backgroundColor: "#52c41a",
+                marginLeft: "8px",
+                verticalAlign: "middle",
+                boxShadow: "0 0 4px #52c41a",
+              }}
+            />
+          )}
+        </span>
+      ),
+      key: `db-${dbName}`,
+      icon: <VscJson className="react-icon tree-icon" />,
+      children: isCurrent && schema?.tables
+        ? Object.keys(schema.tables).map((tableName) => ({
+            title: tableName,
+            key: `${dbName}-${tableName}`, // Unique key combining DB and Table
+            icon: <VscTable className="react-icon tree-icon" />,
+            isTable: true,
+            tableName: tableName,
+            dbName: dbName
+          }))
+        : [],
+    };
+  });
+
   return (
     <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, cssVar: true }}>
       <Layout className="root-layout">
@@ -645,46 +720,46 @@ function App() {
           </div>
           <Tree
             showIcon
-            defaultExpandAll
-            selectedKeys={selectedTable ? [selectedTable] : []}
+            // defaultExpandAll // Remove defaultExpandAll to avoid clutter if many DBs
+            expandedKeys={[ `db-${currentDb}` ]} // Auto expand current DB
+            selectedKeys={selectedTable ? [`${currentDb}-${selectedTable}`] : [`db-${currentDb}`]}
             onSelect={(selectedKeys: any, info: any) => {
-              const tableName =
-                selectedKeys && selectedKeys.length
-                  ? String(selectedKeys[0])
-                  : "";
-              // If clicking root (db-root) or nothing, do not select a table
-              if (!tableName || tableName === "db-root") {
-                setSelectedTable(null);
-                return;
-              }
-              // If the clicked table isn't opened, add it to monitoredTables (open a new tab)
-              setMonitoredTables((prev) => {
-                if (!prev.includes(tableName)) {
-                  return [...prev, tableName];
-                }
-                return prev;
-              });
-              // Focus the clicked/opened table
-              setSelectedTable(tableName);
-              // Load data for just that opened table
-              if (connected) {
-                loadDataForTable(tableName);
+              if (!selectedKeys || selectedKeys.length === 0) return;
+              
+              const node = info.node;
+              
+              if (node.isTable) {
+                 // It's a table
+                 const tableName = node.tableName;
+                 const dbName = node.dbName;
+                 
+                 // If somehow we clicked a table of a non-current DB (shouldn't happen with current logic), switch first
+                 if (dbName !== currentDb) {
+                     switchDatabase(dbName).then(() => {
+                         setMonitoredTables([tableName]);
+                         setSelectedTable(tableName);
+                         loadDataForTable(tableName);
+                     });
+                     return;
+                 }
+
+                 setMonitoredTables((prev) => {
+                    if (!prev.includes(tableName)) {
+                      return [...prev, tableName];
+                    }
+                    return prev;
+                  });
+                  setSelectedTable(tableName);
+                  if (connected) {
+                    loadDataForTable(tableName);
+                  }
+              } else {
+                  // It's a database node
+                  const dbName = node.title as string;
+                  switchDatabase(dbName);
               }
             }}
-            treeData={[
-              {
-                title: schema?.name || "Open_vSwitch",
-                key: "db-root",
-                icon: <VscJson className="react-icon tree-icon" />,
-                children: schema?.tables
-                  ? Object.keys(schema.tables).map((tableName) => ({
-                      title: tableName,
-                      key: tableName,
-                      icon: <VscTable className="react-icon tree-icon" />,
-                    }))
-                  : [],
-              },
-            ]}
+            treeData={treeData}
           />
         </Layout.Sider>
         <Layout className="main-layout">
@@ -748,25 +823,25 @@ function App() {
               </div>
             )}
           </Layout.Content>
+          <Layout.Footer className="footer">
+            <Button
+              type="text"
+              size="small"
+              icon={
+                connected ? (
+                  <VscDebugStop className="react-icon" />
+                ) : (
+                  <VscDebugStart className="react-icon" />
+                )
+              }
+              onClick={() =>
+                connected ? disconnectOVSDB() : setShowConnectModal(true)
+              }
+            >
+              {connected ? "Disconnect" : "Connect"}
+            </Button>
+          </Layout.Footer>
         </Layout>
-        <Layout.Footer className="footer">
-          <Button
-            type="text"
-            size="small"
-            icon={
-              connected ? (
-                <VscDebugStop className="react-icon" />
-              ) : (
-                <VscDebugStart className="react-icon" />
-              )
-            }
-            onClick={() =>
-              connected ? disconnectOVSDB() : setShowConnectModal(true)
-            }
-          >
-            {connected ? "Disconnect" : "Connect"}
-          </Button>
-        </Layout.Footer>
         <Drawer
           title={drawerTitle}
           open={drawerVisible}

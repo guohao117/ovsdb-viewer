@@ -67,6 +67,13 @@
 /* Layout classes for migrated inline styles */
 .root-layout {
     height: 100vh;
+    overflow: hidden;
+}
+
+.left-sider {
+    overflow-y: auto;
+    height: 100vh;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .table-section {
@@ -85,6 +92,8 @@
     display: flex;
     flex-direction: column;
     flex: 1;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .content {
@@ -92,17 +101,20 @@
     overflow: hidden;
     padding-top: 8px; /* ensure content does not sit under header/tabs */
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
 }
 
 .footer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    /* position: fixed; removed to let it sit in flex flow */
+    flex-shrink: 0;
     z-index: 1000;
     display: flex;
     justify-content: flex-start;
     align-items: center;
+    padding: 4px 16px;
+    background: var(--ant-layout-header-background, #111);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Header & Tab bar styling (for VSCode-like tabs) */
