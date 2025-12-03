@@ -68,11 +68,20 @@
 .root-layout {
     height: 100vh;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.workspace-layout {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: row;
 }
 
 .left-sider {
     overflow-y: auto;
-    height: 100vh;
+    height: 100%;
     border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -92,7 +101,7 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    height: 100vh;
+    height: 100%;
     overflow: hidden;
 }
 
@@ -346,4 +355,19 @@
 .connection-status {
     margin-top: 12px;
     font-style: italic;
+}
+
+.active-db-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #52c41a;
+    margin-left: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 4px #52c41a;
+}
+
+.endpoint-list-space {
+    width: 100%;
 }

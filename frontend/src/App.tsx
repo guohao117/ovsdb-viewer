@@ -25,6 +25,7 @@ import {
   VscTable,
   VscDebugStart,
   VscDebugStop,
+  VscRefresh,
 } from "react-icons/vsc";
 import {
   ConnectOVSDB,
@@ -679,18 +680,7 @@ function App() {
         <span>
           {dbName}
           {isCurrent && (
-            <span
-              style={{
-                display: "inline-block",
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                backgroundColor: "#52c41a",
-                marginLeft: "8px",
-                verticalAlign: "middle",
-                boxShadow: "0 0 4px #52c41a",
-              }}
-            />
+            <span className="active-db-dot" />
           )}
         </span>
       ),
@@ -712,38 +702,43 @@ function App() {
   return (
     <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, cssVar: true }}>
       <Layout className="root-layout">
-        <Layout.Sider className="left-sider" width={250} theme="dark">
-          <div className="logo">OVSDB Viewer</div>
-          <div className="sider-header">
-            <VscJson className="react-icon" />
-            <span className="sider-title">DBs</span>
-          </div>
-          <Tree
-            showIcon
-            // defaultExpandAll // Remove defaultExpandAll to avoid clutter if many DBs
-            expandedKeys={[ `db-${currentDb}` ]} // Auto expand current DB
-            selectedKeys={selectedTable ? [`${currentDb}-${selectedTable}`] : [`db-${currentDb}`]}
-            onSelect={(selectedKeys: any, info: any) => {
-              if (!selectedKeys || selectedKeys.length === 0) return;
-              
-              const node = info.node;
-              
-              if (node.isTable) {
-                 // It's a table
-                 const tableName = node.tableName;
-                 const dbName = node.dbName;
-                 
-                 // If somehow we clicked a table of a non-current DB (shouldn't happen with current logic), switch first
-                 if (dbName !== currentDb) {
-                     switchDatabase(dbName).then(() => {
-                         setMonitoredTables([tableName]);
-                         setSelectedTable(tableName);
-                         loadDataForTable(tableName);
-                     });
-                     return;
-                 }
+        <Layout className="workspace-layout">
+          <Layout.Sider className="left-sider" width={250} theme="dark">
+            <div className="logo">OVSDB Viewer</div>
+            <div className="sider-header">
+              <VscJson className="react-icon" />
+              <span className="sider-title">DBs</span>
+            </div>
+            <Tree
+              showIcon
+              // defaultExpandAll // Remove defaultExpandAll to avoid clutter if many DBs
+              expandedKeys={[`db-${currentDb}`]} // Auto expand current DB
+              selectedKeys={
+                selectedTable
+                  ? [`${currentDb}-${selectedTable}`]
+                  : [`db-${currentDb}`]
+              }
+              onSelect={(selectedKeys: any, info: any) => {
+                if (!selectedKeys || selectedKeys.length === 0) return;
 
-                 setMonitoredTables((prev) => {
+                const node = info.node;
+
+                if (node.isTable) {
+                  // It's a table
+                  const tableName = node.tableName;
+                  const dbName = node.dbName;
+
+                  // If somehow we clicked a table of a non-current DB (shouldn't happen with current logic), switch first
+                  if (dbName !== currentDb) {
+                    switchDatabase(dbName).then(() => {
+                      setMonitoredTables([tableName]);
+                      setSelectedTable(tableName);
+                      loadDataForTable(tableName);
+                    });
+                    return;
+                  }
+
+                  setMonitoredTables((prev) => {
                     if (!prev.includes(tableName)) {
                       return [...prev, tableName];
                     }
@@ -753,95 +748,102 @@ function App() {
                   if (connected) {
                     loadDataForTable(tableName);
                   }
-              } else {
+                } else {
                   // It's a database node
                   const dbName = node.title as string;
                   switchDatabase(dbName);
-              }
-            }}
-            treeData={treeData}
-          />
-        </Layout.Sider>
-        <Layout className="main-layout">
-          <Layout.Header className="header">
-            <div className="header-top">
-              <Breadcrumb>
-                <Breadcrumb.Item>{schema?.name || "OVSDB"}</Breadcrumb.Item>
-                <Breadcrumb.Item>
-                  {selectedTable || "Home"}
-                </Breadcrumb.Item>
-              </Breadcrumb>
-              {selectedTable && (
-                <span>({dataMap[selectedTable]?.length || 0} rows)</span>
+                }
+              }}
+              treeData={treeData}
+            />
+          </Layout.Sider>
+          <Layout className="main-layout">
+            <Layout.Header className="header">
+              <div className="header-top">
+                <Breadcrumb>
+                  <Breadcrumb.Item>{schema?.name || "OVSDB"}</Breadcrumb.Item>
+                  <Breadcrumb.Item>{selectedTable || "Home"}</Breadcrumb.Item>
+                </Breadcrumb>
+                {selectedTable && (
+                  <Space>
+                    <span>({dataMap[selectedTable]?.length || 0} rows)</span>
+                    <Button
+                      type="text"
+                      icon={<VscRefresh className="react-icon" />}
+                      onClick={() => loadDataForTable(selectedTable)}
+                      title="Refresh Data"
+                    />
+                  </Space>
+                )}
+              </div>
+            </Layout.Header>
+            <Layout.Content className="content">
+              {monitoredTables && monitoredTables.length > 0 && (
+                <div className="tabs-row" ref={tabsRef}>
+                  <Tabs
+                    activeKey={selectedTable || undefined}
+                    onChange={(key) => {
+                      setSelectedTable(key);
+                      if (connected) {
+                        loadDataForTable(key);
+                      }
+                    }}
+                    type="editable-card"
+                    hideAdd
+                    onEdit={(targetKey, action) => {
+                      if (action === "remove") {
+                        removeTab(targetKey as string);
+                      }
+                    }}
+                    items={monitoredTables.map((tableName) => {
+                      return {
+                        key: tableName,
+                        label: (
+                          <span className="tab-label">
+                            {getIconByKey(tableName)}
+                            <span>{tableName}</span>
+                          </span>
+                        ),
+                        closable: true,
+                      };
+                    })}
+                  />
+                </div>
               )}
-            </div>
-          </Layout.Header>
-          <Layout.Content className="content">
-            {monitoredTables && monitoredTables.length > 0 && (
-              <div className="tabs-row" ref={tabsRef}>
-                <Tabs
-                  activeKey={selectedTable || undefined}
-                  onChange={(key) => {
-                    setSelectedTable(key);
-                    if (connected) {
-                      loadDataForTable(key);
-                    }
-                  }}
-                  type="editable-card"
-                  hideAdd
-                  onEdit={(targetKey, action) => {
-                    if (action === "remove") {
-                      removeTab(targetKey as string);
-                    }
-                  }}
-                  items={monitoredTables.map((tableName) => {
-                    return {
-                      key: tableName,
-                      label: (
-                        <span className="tab-label">
-                          {getIconByKey(tableName)}
-                          <span>{tableName}</span>
-                        </span>
-                      ),
-                      closable: true,
-                    };
-                  })}
-                />
-              </div>
-            )}
-            {selectedTable ? (
-              renderTable(
-                selectedTable,
-                dataMap[selectedTable],
-                selectedTable,
-              )
-            ) : (
-              <div className="welcome">
-                <h2>Welcome to OVSDB Viewer</h2>
-                <p>Select a table from the sidebar to view data.</p>
-                <div className="status">Status: {dataStatus}</div>
-              </div>
-            )}
-          </Layout.Content>
-          <Layout.Footer className="footer">
-            <Button
-              type="text"
-              size="small"
-              icon={
-                connected ? (
-                  <VscDebugStop className="react-icon" />
-                ) : (
-                  <VscDebugStart className="react-icon" />
+              {selectedTable ? (
+                renderTable(
+                  selectedTable,
+                  dataMap[selectedTable],
+                  selectedTable,
                 )
-              }
-              onClick={() =>
-                connected ? disconnectOVSDB() : setShowConnectModal(true)
-              }
-            >
-              {connected ? "Disconnect" : "Connect"}
-            </Button>
-          </Layout.Footer>
+              ) : (
+                <div className="welcome">
+                  <h2>Welcome to OVSDB Viewer</h2>
+                  <p>Select a table from the sidebar to view data.</p>
+                  <div className="status">Status: {dataStatus}</div>
+                </div>
+              )}
+            </Layout.Content>
+          </Layout>
         </Layout>
+        <Layout.Footer className="footer">
+          <Button
+            type="text"
+            size="small"
+            icon={
+              connected ? (
+                <VscDebugStop className="react-icon" />
+              ) : (
+                <VscDebugStart className="react-icon" />
+              )
+            }
+            onClick={() =>
+              (connected ? disconnectOVSDB() : setShowConnectModal(true))
+            }
+          >
+            {connected ? "Disconnect" : "Connect"}
+          </Button>
+        </Layout.Footer>
         <Drawer
           title={drawerTitle}
           open={drawerVisible}
@@ -869,7 +871,7 @@ function App() {
           >
             <Form.List name="endpoints">
               {(fields, { add, remove }) => (
-                <Space direction="vertical" style={{ width: "100%" }} size="large">
+                <Space direction="vertical" className="endpoint-list-space" size="large">
                   {fields.map((field, index) => {
                     const endpointValues = endpointsWatch?.[field.name as number];
                     const tunnelEnabled = endpointValues?.tunnelEnabled;
