@@ -700,7 +700,49 @@ function App() {
   });
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, cssVar: true }}>
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        cssVar: true,
+        token: {
+          colorPrimary: "#007fd4", // VS Code Blue
+          colorBgBase: "#1e1e1e", // Editor background
+          colorBgContainer: "#1e1e1e", // Container background (matches editor body for fusion)
+          colorText: "#cccccc",
+          borderRadius: 0,
+          fontFamily: "Segoe UI, sans-serif",
+          colorBorder: "#303030", // Restore global border
+        },
+        components: {
+          Layout: {
+            headerBg: "#1e1e1e",
+            siderBg: "#252526",
+            bodyBg: "#1e1e1e",
+            footerBg: "#007fd4", // Status bar color
+          },
+          Tabs: {
+            cardBg: "#252526", // Inactive tabs match header background
+            cardGutter: 1,
+            itemColor: "#969696",
+            itemSelectedColor: "#ffffff",
+            itemHoverColor: "#cccccc",
+            titleFontSize: 13,
+            horizontalItemPadding: "8px 12px",
+            colorBorderSecondary: "#303030", // Restore border below tabs
+          },
+          Table: {
+            headerBg: "#252526",
+            headerColor: "#cccccc",
+            borderColor: "#333333",
+            rowHoverBg: "#2a2d2e",
+          },
+          Tree: {
+            directoryNodeSelectedBg: "#37373d",
+            directoryNodeSelectedColor: "#ffffff",
+          },
+        },
+      }}
+    >
       <Layout className="root-layout">
         <Layout className="workspace-layout">
           <Layout.Sider className="left-sider" width={250} theme="dark">

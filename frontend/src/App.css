@@ -24,31 +24,23 @@
     font-weight: bold;
 }
 
-/* Make table header sticky within the scrollable table section
-   and ensure it doesn't get overlapped by the sticky tab row above. */
+/* Make table header sticky within the scrollable table section */
 .table-section .data-table thead th {
     position: sticky;
-    top: 0; /* stick to the top of the table-section */
+    top: 0;
     z-index: 4;
-    background: var(--ant-layout-header-background, #111);
-    /* Keep the text readable in sticky state */
+    background: var(--ant-table-header-bg, #252526);
     color: inherit;
 }
 
 /* Make antd Table header sticky within the same scrollable table section */
 .table-section .ant-table thead th {
     position: sticky;
-    top: 0; /* stick to the top of the table-section */
-    /* Ensure header sits above any table row content (e.g. expanded rows) */
+    top: 0;
     z-index: 200;
-    background: var(--ant-layout-header-background, #111);
-    /* Keep the text readable in sticky state */
+    /* background: var(--ant-layout-header-bg, #1e1e1e); Removed to let ConfigProvider handle it */
     color: inherit;
 }
-
-/* If you prefer to align the sticky table header precisely below the
-   tabs-row, update the `top` value above or define a CSS variable
-   for the tab-row height and use `top: var(--tabs-height)` */
 
 /* Welcome Section */
 .welcome {
@@ -64,7 +56,7 @@
     padding: 1rem;
 }
 
-/* Layout classes for migrated inline styles */
+/* Layout classes */
 .root-layout {
     height: 100vh;
     overflow: hidden;
@@ -82,7 +74,7 @@
 .left-sider {
     overflow-y: auto;
     height: 100%;
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-right: 1px solid var(--ant-color-border);
 }
 
 .table-section {
@@ -108,46 +100,40 @@
 .content {
     flex: 1;
     overflow: hidden;
-    padding-top: 8px; /* ensure content does not sit under header/tabs */
+    padding-top: 0;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
 }
 
 .footer {
-    /* position: fixed; removed to let it sit in flex flow */
     flex-shrink: 0;
     z-index: 1000;
     display: flex;
     justify-content: flex-start;
     align-items: center;
     padding: 4px 16px;
-    background: var(--ant-layout-header-background, #111);
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--ant-color-border);
 }
 
-/* Header & Tab bar styling (for VSCode-like tabs) */
+/* Header & Tab bar styling */
 .header {
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-    /* ensure header height grows to contain tabs instead of staying fixed */
     height: auto !important;
     padding: 8px 16px;
     align-items: stretch;
-    background: var(--ant-layout-header-background, #111);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--ant-color-border);
     z-index: 2;
     line-height: normal;
 }
 
-/* Override Ant Design default header height in case its selector is more specific */
 .ant-layout-header.header {
     height: auto !important;
     line-height: normal !important;
 }
 
-/* Top header row with breadcrumb and item count */
 .header-top {
     display: flex;
     align-items: center;
@@ -157,30 +143,21 @@
     margin-bottom: 0;
 }
 
-/* Left side wrapper (breadcrumb + rows count) */
 .header-left {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-/* Tabs row sits at the top of content and keeps table from overlapping */
+/* Tabs row sits at the top of content */
 .tabs-row {
     width: 100%;
-    /* remove vertical padding to make tabs flush with table */
     padding: 0;
-    /* keep tabs visible at top while scrolling the content area */
     position: sticky;
     top: 0;
-    /* keep tabs above the table header */
-    z-index: 300; /* higher than the table header's z-index */
-    /* use header color so tab row stands out from table content */
-    background: var(--ant-layout-header-background, rgba(17, 17, 17, 0.95));
-    /* subtle bottom border to separate tabs from the table area */
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    /* remove margin-bottom - avoid stacking spacing with .table-section padding */
+    z-index: 300;
+    background: var(--ant-color-bg-container, #1e1e1e);
     margin-bottom: 0;
-    /* align child .ant-tabs so its own padding won't create extra height */
     display: flex;
     align-items: center;
     box-sizing: border-box;
@@ -208,32 +185,6 @@
     line-height: normal !important;
 }
 
-.tab-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.btn-open {
-    margin-left: 8px;
-}
-
-/* Make editable-card tabs look closer to VSCode's style */
-.ant-tabs.ant-tabs-editable-card .ant-tabs-nav .ant-tabs-tab {
-    background: transparent;
-    margin-right: 6px;
-    border: none;
-    border-radius: 2px 2px 0 0;
-    padding: 6px 10px;
-    transition: background 0.15s ease;
-}
-
-/* Active tab highlight to indicate selection */
-.ant-tabs.ant-tabs-editable-card .ant-tabs-nav .ant-tabs-tab-active {
-    background-color: rgba(255, 255, 255, 0.04);
-    color: inherit;
-    border-bottom: 2px solid var(--ant-primary-color, #1677ff);
-}
-
 /* Keep the tabs vertically centered (scoped to .tabs-row) */
 .tabs-row .ant-tabs-nav .ant-tabs-nav-list {
     align-items: center;
@@ -248,15 +199,19 @@
     overflow: hidden;
 }
 
-/* Ensure table rows always remain below the sticky table header so they don't overlay it */
+.tab-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.btn-open {
+    margin-left: 8px;
+}
+
+/* Ensure table rows always remain below the sticky table header */
 .table-section .ant-table .ant-table-row {
     position: relative;
     z-index: 1;
-}
-
-/* Make the icons in tabs match the font-size used by the text */
-.ant-tabs-nav .ant-tabs-tab .anticon {
-    font-size: 14px;
 }
 
 /* Logo minor layout */
@@ -267,7 +222,6 @@
     text-align: center;
 }
 
-/* Sider header (DBs) - shows DB list root / JSON-like database label */
 .sider-header {
     display: flex;
     align-items: center;
@@ -275,43 +229,32 @@
     padding: 12px 16px;
 }
 .left-sider .react-icon {
-    /* Slightly enlarge and vertically center icons in the Sider area so they
-     visually line up better with the adjacent text. */
     width: 1.15em;
     height: 1.15em;
     font-size: 1.15em;
     vertical-align: -0.08em;
 }
 
-/* Sider tree node content uses inline-flex so icon + title vertically align */
-
-/* Remove per-node transforms; flex alignment handles consistent centering */
 .left-sider .ant-tree .tree-icon,
 .left-sider .ant-tree .tree-icon svg,
 .left-sider .ant-tree svg.tree-icon {
     transform: translateY(var(--tree-icon-translate));
 }
 
-/* JSON-like icon (simple curly brace text styled as an icon) */
-/* JSON-like small icon (curly braces) */
-/* JSON-like small icon and react-icons (tie to primary color) */
-/* icon common styling */
 .react-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-family: monospace;
-    /* let svg scale with surrounding font size */
     font-size: inherit;
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--ant-color-fill-quaternary);
     border-radius: 6px;
     padding: 0;
-    color: var(--color-primary, var(--ant-primary-color, #1677ff));
+    color: var(--ant-color-primary, #1677ff);
     line-height: 1;
     vertical-align: baseline;
 }
 
-/* Ensure SVG icons inside the react-icon are sized and aligned nicely */
 .react-icon svg {
     width: 1em;
     height: 1em;
@@ -320,7 +263,6 @@
     transform: none;
 }
 
-/* Tab label icons are smaller and match the tab text size */
 .tab-label .react-icon svg {
     width: 0.875em;
     height: 0.875em;
@@ -328,15 +270,14 @@
     vertical-align: middle;
 }
 
-/* Sider title next to JSON icon */
 .sider-title {
     font-weight: 600;
     color: white;
 }
 
 .endpoint-card {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--ant-color-border);
+    background: var(--ant-color-fill-quaternary);
 }
 
 .endpoint-card__header {
@@ -347,7 +288,7 @@
 }
 
 .tunnel-section {
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--ant-color-border);
     padding-top: 8px;
     margin-top: 8px;
 }
@@ -362,10 +303,10 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background-color: #52c41a;
+    background-color: var(--ant-color-success);
     margin-left: 8px;
     vertical-align: middle;
-    box-shadow: 0 0 4px #52c41a;
+    box-shadow: 0 0 4px var(--ant-color-success);
 }
 
 .endpoint-list-space {
