@@ -165,25 +165,34 @@ func normalizeRow(row ovsdb.Row) map[string]interface{} {
 func normalizeValue(val interface{}) interface{} {
 	switch v := val.(type) {
 	case ovsdb.OvsSet:
-		return v.GoSet
+		newSet := make([]interface{}, len(v.GoSet))
+		for i, elem := range v.GoSet {
+			newSet[i] = normalizeValue(elem)
+		}
+		return newSet
 	case *ovsdb.OvsSet:
-		return v.GoSet
+		newSet := make([]interface{}, len(v.GoSet))
+		for i, elem := range v.GoSet {
+			newSet[i] = normalizeValue(elem)
+		}
+		return newSet
 	case ovsdb.OvsMap:
 		// Convert to map[string]interface{} for JSON compatibility
 		out := make(map[string]interface{})
 		for k, val := range v.GoMap {
-			out[fmt.Sprintf("%v", k)] = val
+			out[fmt.Sprintf("%v", normalizeValue(k))] = normalizeValue(val)
 		}
 		return out
 	case *ovsdb.OvsMap:
 		out := make(map[string]interface{})
 		for k, val := range v.GoMap {
-			out[fmt.Sprintf("%v", k)] = val
+			out[fmt.Sprintf("%v", normalizeValue(k))] = normalizeValue(val)
 		}
 		return out
 	case ovsdb.UUID:
 		return v.GoUUID
 	case []interface{}:
+		// Standard array handling (recursive)
 		newSlice := make([]interface{}, len(v))
 		for i, elem := range v {
 			newSlice[i] = normalizeValue(elem)
