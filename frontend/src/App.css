@@ -312,3 +312,40 @@
 .endpoint-list-space {
     width: 100%;
 }
+
+/* Highlighted row style */
+.highlighted-row > td {
+    background-color: rgba(255, 255, 0, 0.15) !important;
+}
+
+@keyframes highlight-flash-anim {
+    0% { background-color: rgba(255, 255, 0, 0.5); }
+    100% { background-color: rgba(255, 255, 0, 0.15); }
+}
+
+.highlight-flash > td {
+    animation: highlight-flash-anim 2s ease-out;
+}
+
+/* Reference link style */
+.ref-link {
+    text-decoration: none;
+    border-bottom: 1px dotted #4fc1ff;
+}
+.ref-link:hover {
+    border-bottom: 1px solid #4fc1ff;
+}
+
+/* Expand/Collapse button in table cells */
+.cell-expand-btn {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #4fc1ff !important; /* Link color */
+    padding: 0 4px !important;
+}
+
+.cell-expand-btn:hover {
+    background-color: rgba(79, 193, 255, 0.1) !important;
+    color: #4fc1ff !important;
+}

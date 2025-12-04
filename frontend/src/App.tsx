@@ -19,6 +19,7 @@ import {
   Table,
   Drawer,
   Tree,
+  Tooltip,
 } from "antd";
 import {
   VscJson,
@@ -243,6 +244,7 @@ function App() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [drawerTitle, setDrawerTitle] = useState<string | null>(null);
   const [drawerContent, setDrawerContent] = useState<any | null>(null);
+  const [highlightedRow, setHighlightedRow] = useState<string | null>(null);
   const endpointsWatch = Form.useWatch("endpoints", form) as
     | EndpointFormValues[]
     | undefined;
@@ -407,6 +409,85 @@ function App() {
     return false;
   }
 
+  function getRefTable(colSchema: any): string | undefined {
+    if (!colSchema) return undefined;
+    
+    // Handle Wails/Go struct mapping vs Raw JSON
+    // The column schema might have 'type' as a string or object.
+    
+    let type = colSchema.type || colSchema.Type;
+    
+    // If type is an object (Complex Type)
+    if (typeof type === 'object' && type !== null) {
+        // Check key
+        const key = type.key || type.Key;
+        if (key && (key.refTable || key.RefTable)) {
+            return key.refTable || key.RefTable;
+        }
+        // Check value (for maps)
+        const value = type.value || type.Value;
+        if (value && (value.refTable || value.RefTable)) {
+            return value.refTable || value.RefTable;
+        }
+    }
+    
+    // Also check if colSchema has TypeObj (from models.ts definition)
+    if (colSchema.TypeObj || colSchema.typeObj) {
+        const typeObj = colSchema.TypeObj || colSchema.typeObj;
+        const key = typeObj.Key || typeObj.key;
+        if (key && (key.RefTable || key.refTable)) {
+            return key.RefTable || key.refTable;
+        }
+        const value = typeObj.Value || typeObj.value;
+        if (value && (value.RefTable || value.refTable)) {
+            return value.RefTable || value.refTable;
+        }
+    }
+  
+    return undefined;
+  }
+
+  function handleLinkClick(refTable: string, uuid: string) {
+    // Add to monitored tables if not present
+    if (!monitoredTables.includes(refTable)) {
+      setMonitoredTables((prev) => [...prev, refTable]);
+    }
+    // Switch to the table
+    setSelectedTable(refTable);
+    // Set highlighted row
+    setHighlightedRow(uuid);
+    // Load data if connected
+    if (connected) {
+      loadDataForTable(refTable);
+    }
+  }
+
+  function getRowLabel(tableName: string, uuid: string): string {
+    const data = tableData[tableName];
+    if (!data) return uuid;
+
+    const row = data.find((r) => r._uuid === uuid);
+    if (!row) return uuid;
+
+    // Try to find a name
+    if (row.name) return row.name;
+    
+    // Try to find index columns from schema
+    if (schema && schema.tables && (schema.tables as any)[tableName]) {
+        const tableSchema = (schema.tables as any)[tableName];
+        if (tableSchema.indexes && tableSchema.indexes.length > 0) {
+            // Use the first index
+            const indexCols = tableSchema.indexes[0];
+            const labelParts = indexCols.map((col: string) => row[col]).filter((val: any) => val !== undefined && val !== null);
+            if (labelParts.length > 0) {
+                return labelParts.join("-");
+            }
+        }
+    }
+
+    return uuid;
+  }
+
   function renderTable(title: string, data: any[], tableName: string) {
     if (!schema || !schema.tables || !(schema.tables as any)[tableName]) {
       return (
@@ -464,34 +545,116 @@ function App() {
       ...col,
       render: (value: any, record: any, rowIndex: number) => {
           const cellKey = `${tableName}-${rowIndex}-${col.dataIndex}`;
+          
+          // Check for reference table
+          const refTable = getRefTable((tableSchema.columns as any)[col.field]);
+
+          if (refTable) {
+            if (typeof value === 'string') {
+               // Single UUID
+               return (
+                 <a 
+                   href="#" 
+                   onClick={(e) => {
+                     e.preventDefault();
+                     handleLinkClick(refTable, value);
+                   }}
+                   className="ref-link"
+                   title={`Go to ${refTable}`}
+                 >
+                   {value}
+                 </a>
+               );
+            } else if (Array.isArray(value)) {
+               // Set of UUIDs
+               // If it's a large set, we might want to collapse it, but let's keep the collapse logic below
+               // and just render links inside the expanded/collapsed view?
+               // Actually, the existing logic handles collapse for arrays.
+               // We should integrate link rendering into that.
+            }
+          }
+
           const isComplex =
             Array.isArray(value) ||
             (typeof value === "object" && value !== null);
           const small = isComplex && isSmallComplex(value);
+          
           if (!isComplex) {
             return value || "-";
           }
+
+          // Helper to render content (links or text)
+          const renderContent = (val: any) => {
+             if (refTable && typeof val === 'string') {
+                 const label = getRowLabel(refTable, val);
+                 return (
+                   <Tooltip title={val} placement="topLeft">
+                     <a 
+                       href="#" 
+                       onClick={(e) => {
+                         e.preventDefault();
+                         handleLinkClick(refTable, val);
+                       }}
+                       className="ref-link"
+                       style={{ color: '#4fc1ff' }} // VS Code link color
+                     >
+                       {label}
+                     </a>
+                   </Tooltip>
+                 );
+             }
+             return JSON.stringify(val);
+          };
+
           if (small) {
+            if (Array.isArray(value) && refTable) {
+                return (
+                    <Space size="small" wrap style={{ gap: '4px' }}>
+                        {value.map((uuid, idx) => (
+                            <React.Fragment key={idx}>
+                                {idx > 0 && ", "}
+                                {renderContent(uuid)}
+                            </React.Fragment>
+                        ))}
+                    </Space>
+                );
+            }
             return <span>{JSON.stringify(value)}</span>;
           }
+          
           if (expandedCells[cellKey]) {
             return (
               <>
                 <Button
                   size="small"
+                  className="cell-expand-btn"
                   onClick={() => toggleCell(tableName, rowIndex, col.dataIndex)}
+                  style={{ marginBottom: 4 }}
                 >
                   Collapse
                 </Button>
-                <pre className="complex-value">
-                  {JSON.stringify(value, null, 2)}
-                </pre>
+                {Array.isArray(value) && refTable ? (
+                    <div className="complex-value" style={{ whiteSpace: 'pre-wrap' }}>
+                        [
+                        {value.map((uuid, idx) => (
+                            <div key={idx} style={{ paddingLeft: '1em' }}>
+                                {renderContent(uuid)}{idx < value.length - 1 ? "," : ""}
+                            </div>
+                        ))}
+                        ]
+                    </div>
+                ) : (
+                    <pre className="complex-value">
+                      {JSON.stringify(value, null, 2)}
+                    </pre>
+                )}
               </>
             );
           }
           return (
             <Button
               size="small"
+              className="cell-expand-btn"
               onClick={() => toggleCell(tableName, rowIndex, col.dataIndex)}
             >
               {Array.isArray(value) ? `${value.length} items` : "View"}
@@ -528,6 +691,7 @@ function App() {
             }
             // Enable antd Table sticky header and offset the header by the tabs row height
             sticky={{ offsetHeader: tabsOffset }}
+            rowClassName={(record) => record._uuid === highlightedRow ? 'highlighted-row' : ''}
             expandable={{
               // Row-level expand: show the full record as JSON when row expanded
               expandedRowRender: (record) => (
@@ -592,6 +756,26 @@ function App() {
       loadDataForTable(selectedTable);
     }
   }, [selectedTable, connected]);
+
+  // Effect to handle row highlighting and scrolling
+  useEffect(() => {
+    if (selectedTable && highlightedRow && tableData[selectedTable]) {
+      const data = tableData[selectedTable];
+      const index = data.findIndex((r: any) => r._uuid === highlightedRow);
+      
+      if (index !== -1) {
+        setTimeout(() => {
+          const rowKey = `${selectedTable}-${index}`;
+          const rowEl = document.querySelector(`[data-row-key="${rowKey}"]`);
+          if (rowEl) {
+            rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            rowEl.classList.add('highlight-flash');
+            setTimeout(() => rowEl.classList.remove('highlight-flash'), 2000);
+          }
+        }, 100);
+      }
+    }
+  }, [selectedTable, highlightedRow, tableData]);
 
   async function loadHistory() {
     try {
